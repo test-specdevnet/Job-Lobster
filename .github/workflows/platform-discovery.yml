@@ -8,6 +8,7 @@ on:
       - .github/workflows/platform-discovery.yml
       - scripts/fetch_platform_jobs.py
       - scripts/requirements-platform.txt
+      - data/external-search/**
   schedule:
     - cron: "5 10 * * *"
   workflow_dispatch:
@@ -30,7 +31,6 @@ jobs:
       matrix:
         provider:
           - indeed
-          - linkedin
           - glassdoor
     steps:
       - name: Check out the collector

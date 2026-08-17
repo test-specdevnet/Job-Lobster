@@ -1,0 +1,71 @@
+{
+  "provider": "glassdoor",
+  "searchedAt": "2026-08-17T23:30:00Z",
+  "searchMethod": "External web search with canonical Glassdoor listing verification",
+  "queries": [
+    "site:glassdoor.com/job-listing growth marketing manager remote",
+    "site:glassdoor.ca/job-listing content marketing manager remote Canada",
+    "site:glassdoor.com/job-listing marketing manager remote posted this week"
+  ],
+  "jobs": [
+    {
+      "id": "1010124977713",
+      "title": "Growth Marketing Manager",
+      "company": "PITCHLAB AI, INC.",
+      "description": "Hands-on growth marketing role for a mobile sports technology app. Own paid acquisition across Meta, TikTok, and YouTube; test creative; analyze CAC, ROAS, conversion, retention, and subscriptions; support organic content, partnerships, and community growth. The employer states that the work location is remote.",
+      "location": "Remote - United States",
+      "country": "United States",
+      "is_remote": true,
+      "job_type": "fulltime",
+      "min_amount": 38.46,
+      "max_amount": 57.69,
+      "currency": "USD",
+      "interval": "hour",
+      "salary_source": "Glassdoor employer-provided salary, externally verified 2026-08-17",
+      "date_posted": "2026-08-15T12:00:00Z",
+      "job_url": "https://www.glassdoor.com/job-listing/growth-marketing-manager-pitchlab-ai-inc-JV_KO0%2C24_KE25%2C40.htm?jl=1010124977713",
+      "job_url_direct": "https://www.glassdoor.com/job-listing/growth-marketing-manager-pitchlab-ai-inc-JV_KO0%2C24_KE25%2C40.htm?jl=1010124977713",
+      "company_industry": "Sports technology"
+    },
+    {
+      "id": "1010164295150",
+      "title": "Senior Growth Marketing Manager",
+      "company": "LeadVenture",
+      "description": "Own acquisition and upsell campaign strategy for a remote SaaS brand. Build integrated paid media, outbound, email, event, and partner campaigns; align Marketing, Sales, and BDR teams; and take accountability for pipeline, conversion, and revenue outcomes.",
+      "location": "Remote - United States",
+      "country": "United States",
+      "is_remote": true,
+      "job_type": "fulltime",
+      "min_amount": 100000,
+      "max_amount": 115000,
+      "currency": "USD",
+      "interval": "year",
+      "salary_source": "Glassdoor employer-provided salary, externally verified 2026-08-17",
+      "date_posted": "2026-08-15T12:00:00Z",
+      "job_url": "https://www.glassdoor.com/job-listing/senior-growth-marketing-manager-leadventure-JV_KO0%2C31_KE32%2C43.htm?jl=1010164295150",
+      "job_url_direct": "https://www.glassdoor.com/job-listing/senior-growth-marketing-manager-leadventure-JV_KO0%2C31_KE32%2C43.htm?jl=1010164295150",
+      "company_industry": "SaaS"
+    },
+    {
+      "id": "1010056388278",
+      "title": "Content Marketing Manager - Canada",
+      "company": "Rocket Doctor",
+      "description": "Lead organic growth and brand voice for a digital health platform. Own content, social channels, video and visual production, sales enablement, presentations, community engagement, and AI-assisted creative workflows. The employer describes the role as entirely virtual.",
+      "location": "Remote - Canada",
+      "city": "Toronto",
+      "state": "Ontario",
+      "country": "Canada",
+      "is_remote": true,
+      "job_type": "fulltime",
+      "min_amount": 95000,
+      "max_amount": 140000,
+      "currency": "CAD",
+      "interval": "year",
+      "salary_source": "Glassdoor employer-provided remote-listing salary, externally verified 2026-08-17",
+      "date_posted": "2026-08-16T12:00:00Z",
+      "job_url": "https://www.glassdoor.ca/job-listing/content-marketing-manager-canada-rocket-doctor-JV_IC2281069_KO0%2C32_KE33%2C46.htm?jl=1010056388278",
+      "job_url_direct": "https://www.glassdoor.ca/job-listing/content-marketing-manager-canada-rocket-doctor-JV_IC2281069_KO0%2C32_KE33%2C46.htm?jl=1010056388278",
+      "company_industry": "Digital health"
+    }
+  ]
+}

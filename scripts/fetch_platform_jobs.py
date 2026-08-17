@@ -11,6 +11,7 @@ import re
 import sys
 import time
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
@@ -20,11 +21,12 @@ from jobspy import scrape_jobs
 
 
 AUDIENCE = "job-lobster-platform-ingest"
-COLLECTOR = "github-actions-jobspy/1.1.82+jsearch-v2"
+COLLECTOR = "github-actions-jobspy/1.1.82+jsearch-v2+external-web-v1"
 MAX_BATCH_SIZE = 100
 HOURS_OLD = 168
 JSEARCH_API_URL = "https://api.openwebninja.com/jsearch/search-v2"
 SUPPORTED_PROVIDERS = ("indeed", "linkedin", "glassdoor")
+EXTERNAL_SEARCH_DIR = Path(__file__).resolve().parents[1] / "data" / "external-search"
 RESULTS_WANTED = {
     "indeed": 125,
 }
@@ -443,8 +445,52 @@ def collect_jsearch_jobs(
     return list(by_url.values()), searches_performed, searches_succeeded, errors[:20]
 
 
+def collect_external_search_snapshot(
+    provider: str,
+) -> tuple[list[dict[str, Any]], int, int, list[str]]:
+    snapshot_path = EXTERNAL_SEARCH_DIR / (provider + ".json")
+    try:
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            "External web-search snapshot is unavailable: " + str(error)
+        ) from error
+    if not isinstance(payload, dict) or payload.get("provider") != provider:
+        raise RuntimeError("External web-search snapshot has an invalid provider.")
+    raw_jobs = payload.get("jobs")
+    if not isinstance(raw_jobs, list):
+        raise RuntimeError("External web-search snapshot does not contain a job list.")
+    queries = payload.get("queries")
+    search_count = len(queries) if isinstance(queries, list) and queries else 1
+    collection_time = datetime.now(timezone.utc)
+    by_url: dict[str, dict[str, Any]] = {}
+    for raw_record in raw_jobs:
+        if not isinstance(raw_record, dict):
+            continue
+        job = row_to_job(raw_record, clean_text(raw_record.get("country")), provider)
+        if job and is_fresh_posting(job["postedAt"], collection_time):
+            by_url[job["sourceUrl"]] = job
+    print(
+        json.dumps(
+            {
+                "message": "external_web_search_snapshot_loaded",
+                "provider": provider,
+                "snapshot": str(snapshot_path.relative_to(snapshot_path.parents[2])),
+                "searched_at": payload.get("searchedAt"),
+                "rows": len(raw_jobs),
+                "qualified_for_ingestion": len(by_url),
+            }
+        )
+    )
+    return list(by_url.values()), search_count, search_count, []
+
+
 def collect_jobs(provider: str) -> tuple[list[dict[str, Any]], int, int, list[str]]:
     if provider in {"linkedin", "glassdoor"}:
+        if provider == "glassdoor" and not os.environ.get(
+            "OPENWEBNINJA_API_KEY", ""
+        ).strip():
+            return collect_external_search_snapshot(provider)
         return collect_jsearch_jobs(provider)
     by_url: dict[str, dict[str, Any]] = {}
     collection_time = datetime.now(timezone.utc)
