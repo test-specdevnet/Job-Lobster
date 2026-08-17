@@ -16,6 +16,9 @@ describe("public web-search freshness", () => {
     );
     expect(parseRelativePostedAt("", "5h", now)).toBe("2026-08-17T07:00:00.000Z");
     expect(parseRelativePostedAt("", "Just posted", now)).toBe(now.toISOString());
+    expect(parseRelativePostedAt("", "1 week ago", now)).toBe(
+      "2026-08-10T12:00:00.000Z",
+    );
   });
 
   it("does not invent a posting date when a result has no age evidence", () => {

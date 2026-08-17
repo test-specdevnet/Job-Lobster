@@ -141,9 +141,11 @@ export function parseRelativePostedAt(
   const minutes = value.match(/(\d+)\s*(?:minutes?|mins?|m)\b/);
   const hours = value.match(/(\d+)\s*(?:hours?|hrs?|h)\b/);
   const days = value.match(/(\d+)\+?\s*(?:days?|d)\b/);
+  const weeks = value.match(/(\d+)\s*(?:weeks?|wks?|w)\b/);
   if (minutes) ageMs = Number(minutes[1]) * 60_000;
   else if (hours) ageMs = Number(hours[1]) * 3_600_000;
   else if (days) ageMs = Number(days[1]) * 24 * 3_600_000;
+  else if (weeks) ageMs = Number(weeks[1]) * 7 * 24 * 3_600_000;
   if (ageMs === null) return null;
   return new Date(now.getTime() - ageMs).toISOString();
 }
@@ -304,6 +306,15 @@ async function extractIndexedCards(
   });
 }
 
+async function configurePublicSearchPage(page: Page) {
+  await page.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      + "(KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 JobLobster/1.0",
+  );
+  await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
+  page.setDefaultNavigationTimeout(30_000);
+}
+
 async function extractCards(
   page: Page,
   provider: WebSearchProvider,
@@ -414,12 +425,7 @@ export async function searchPublicJobPlatforms(
       result.searchesPerformed += 1;
       const page = await browser.newPage();
       try {
-        await page.setUserAgent(
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            + "(KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 JobLobster/1.0",
-        );
-        await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
-        page.setDefaultNavigationTimeout(30_000);
+        await configurePublicSearchPage(page);
         const response = await page.goto(definition.url, { waitUntil: "domcontentloaded" });
         if (!response || response.status() >= 400) {
           throw new Error(`HTTP ${response?.status() ?? "no response"}`);

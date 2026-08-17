@@ -173,6 +173,9 @@ export class JobDiscoveryAgent extends Agent<Env, DiscoveryAgentState> {
 
   @callable()
   async getStatus() {
+    if (this.currentState().scheduleVersion < DISCOVERY_SCHEDULE_VERSION) {
+      await this.onStart();
+    }
     const schedules = await this.listSchedules({ type: "cron" });
     return {
       ...this.currentState(),

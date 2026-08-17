@@ -1,9 +1,20 @@
 import { getAgentByName } from "agents";
 import { QUALIFICATION_CONFIG } from "../config/qualification";
+import {
+  EXTERNAL_INGEST_MAX_BYTES,
+  ExternalPayloadError,
+  parseExternalPlatformBatch,
+} from "../providers/external-platform";
 import type { SourceRunMode } from "../providers/source-catalog";
 import type { JobDiscoveryAgent } from "./agent";
+import {
+  GitHubOidcError,
+  verifyGitHubActionsOidc,
+  type VerifiedGitHubActionsIdentity,
+} from "./github-oidc";
 import { jsonResponse, methodNotAllowed, serverError } from "./http";
 import { buildJobsQuery, JOB_SELECT, parseJobFilters, rowToPublicJob, type JobRow } from "./jobs";
+import { executeExternalPlatformIngestion } from "./pipeline";
 
 async function listJobs(request: Request, env: Env) {
   if (request.method !== "GET") return methodNotAllowed();
@@ -94,6 +105,130 @@ async function runAgent(request: Request, env: Env) {
   return jsonResponse({ data: await agent.runPull("manual", runMode) }, { headers: { "cache-control": "no-store" } });
 }
 
+async function readBoundedJson(request: Request, maximumBytes: number): Promise<unknown> {
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength) {
+    const parsedLength = Number(declaredLength);
+    if (!Number.isFinite(parsedLength) || parsedLength < 0 || parsedLength > maximumBytes) {
+      throw new ExternalPayloadError("Request body exceeds the ingestion limit.");
+    }
+  }
+  if (!request.body) throw new ExternalPayloadError("Request body is required.");
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maximumBytes) {
+      await reader.cancel();
+      throw new ExternalPayloadError("Request body exceeds the ingestion limit.");
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(body));
+  } catch {
+    throw new ExternalPayloadError("Request body must be valid JSON.");
+  }
+}
+
+interface ExistingIngestionRun {
+  id: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  jobs_discovered: number;
+  jobs_accepted: number;
+  jobs_rejected: number;
+  duplicates_removed: number;
+  parsing_failures: number;
+  source_failures: number;
+}
+
+async function ingestExternalPlatform(request: Request, env: Env) {
+  if (request.method !== "POST") return methodNotAllowed("POST");
+  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.startsWith("application/json")) {
+    return jsonResponse(
+      { error: { code: "unsupported_media_type", message: "Content-Type must be application/json." } },
+      { status: 415 },
+    );
+  }
+  const authorization = request.headers.get("authorization");
+  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+  let identity: VerifiedGitHubActionsIdentity;
+  try {
+    identity = await verifyGitHubActionsOidc(token);
+  } catch (error) {
+    console.warn(JSON.stringify({
+      message: "external_ingestion_authorization_failed",
+      error: error instanceof GitHubOidcError ? error.message : "OIDC verification failed.",
+    }));
+    return jsonResponse(
+      { error: { code: "unauthorized", message: "Valid GitHub Actions authorization is required." } },
+      { status: 401 },
+    );
+  }
+
+  try {
+    const payload = parseExternalPlatformBatch(await readBoundedJson(request, EXTERNAL_INGEST_MAX_BYTES));
+    const runId = [
+      "external",
+      payload.provider,
+      identity.runId,
+      identity.runAttempt,
+      payload.batchIndex,
+    ].join("_");
+    const existing = await env.JOB_LOBSTER_DB.prepare(`
+      SELECT id, status, started_at, finished_at, jobs_discovered, jobs_accepted, jobs_rejected,
+        duplicates_removed, parsing_failures, source_failures
+      FROM ingestion_runs WHERE id = ? LIMIT 1
+    `).bind(runId).first<ExistingIngestionRun>();
+    if (existing) {
+      return jsonResponse(
+        { data: existing, meta: { idempotentReplay: true } },
+        { headers: { "cache-control": "no-store" } },
+      );
+    }
+    const result = await executeExternalPlatformIngestion(
+      env,
+      runId,
+      payload.source,
+      payload.jobs,
+      {
+        collector: payload.collector,
+        batchIndex: payload.batchIndex,
+        totalBatches: payload.totalBatches,
+        searchesPerformed: payload.searchesPerformed,
+        searchesSucceeded: payload.searchesSucceeded,
+        errors: payload.errors,
+      },
+      new Date(payload.collectedAt),
+    );
+    return jsonResponse(
+      { data: result, meta: { idempotentReplay: false } },
+      { status: 201, headers: { "cache-control": "no-store" } },
+    );
+  } catch (error) {
+    if (error instanceof ExternalPayloadError) {
+      return jsonResponse(
+        { error: { code: "invalid_payload", message: error.message } },
+        { status: 400 },
+      );
+    }
+    throw error;
+  }
+}
+
 export async function handleApi(request: Request, env: Env) {
   try {
     const url = new URL(request.url);
@@ -106,6 +241,7 @@ export async function handleApi(request: Request, env: Env) {
     if (path === "/api/stats" || path === "/api/v1/stats") return getStats(request, env);
     if (path === "/api/v1/agent") return getAgentStatus(request, env);
     if (path === "/api/v1/agent/run") return runAgent(request, env);
+    if (path === "/api/v1/ingest/platform-jobs") return ingestExternalPlatform(request, env);
     const jobMatch = path.match(/^\/api\/(?:v1\/)?jobs\/([^/]+)$/);
     if (jobMatch) return getJob(request, env, decodeURIComponent(jobMatch[1]));
     return jsonResponse({ error: { code: "not_found", message: "API endpoint not found." } }, { status: 404 });

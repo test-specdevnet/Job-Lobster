@@ -8,7 +8,7 @@ import { getCurrencyRates } from "../providers/normalization/currency";
 import { normalizeLocation } from "../providers/normalization/job-fields";
 import { normalizeRawSalary, parseEmployerSalary } from "../providers/normalization/salary";
 import { sourcesForRun, type SourceRunMode } from "../providers/source-catalog";
-import type { AtsSource, DiscoverySource, RawAtsJob } from "../providers/types";
+import type { AtsSource, DiscoverySource, RawAtsJob, WebSearchSource } from "../providers/types";
 import { searchPublicJobPlatforms, WEB_SEARCH_SOURCES } from "../providers/web-search";
 
 export type DiscoveryRunMode = SourceRunMode | "web";
@@ -494,5 +494,113 @@ export async function executeWebDiscoveryRun(
     stats.errors.length ? JSON.stringify(stats.errors.slice(0, 20)) : null, runId,
   ).run();
   console.log("web_discovery_run_complete", stats);
+  return stats;
+}
+
+export interface ExternalDiscoveryMetadata {
+  collector: string;
+  batchIndex: number;
+  totalBatches: number;
+  searchesPerformed: number;
+  searchesSucceeded: number;
+  errors: readonly string[];
+}
+
+export async function executeExternalPlatformIngestion(
+  env: Env,
+  runId: string,
+  source: WebSearchSource,
+  jobs: readonly RawAtsJob[],
+  metadata: ExternalDiscoveryMetadata,
+  startedAt = new Date(),
+): Promise<DiscoveryRunStats> {
+  const startedIso = startedAt.toISOString();
+  const stats: DiscoveryRunStats = {
+    runId,
+    runMode: "web",
+    status: "completed",
+    startedAt: startedIso,
+    finishedAt: startedIso,
+    sourcesPlanned: 1,
+    searchesPerformed: metadata.searchesPerformed,
+    jobsDiscovered: jobs.length,
+    pagesFetched: 0,
+    jobsNormalized: 0,
+    jobsAccepted: 0,
+    jobsRejected: 0,
+    duplicatesRemoved: 0,
+    parsingFailures: 0,
+    sourceFailures: metadata.errors.length ? 1 : 0,
+    errors: metadata.errors.slice(0, 20).map((error) => source.id + ": " + error),
+  };
+
+  await env.JOB_LOBSTER_DB.prepare(
+    "INSERT INTO ingestion_runs (id, run_type, discovery_channel, status, started_at) VALUES (?, 'daily', 'web', 'running', ?)",
+  ).bind(runId, startedIso).run();
+
+  try {
+    await upsertSource(env.JOB_LOBSTER_DB, source);
+    const rates = await getCurrencyRates(env.JOB_LOBSTER_DB, startedAt);
+    const aiBudget = { remaining: 12 };
+
+    for (const job of jobs.filter((candidate) => relevantTitle(candidate.title))) {
+      try {
+        await storeCandidate(env, runId, job, startedAt, rates, aiBudget, stats);
+      } catch (error) {
+        stats.parsingFailures += 1;
+        console.warn(JSON.stringify({
+          message: "external_candidate_processing_failed",
+          runId,
+          collector: metadata.collector,
+          source: source.id,
+          externalId: job.externalId,
+          error: String(error),
+        }));
+      }
+    }
+
+    if (metadata.searchesSucceeded > 0 || jobs.length > 0) {
+      await markSourceSuccess(env.JOB_LOBSTER_DB, source.id, new Date().toISOString());
+    } else {
+      await markSourceFailure(env.JOB_LOBSTER_DB, source.id, startedAt);
+      stats.sourceFailures = 1;
+      if (!stats.errors.length) stats.errors.push(source.id + ": collector returned no successful searches.");
+    }
+
+    await env.JOB_LOBSTER_DB.prepare(`
+      UPDATE jobs SET status = 'expired', updated_at = ?
+      WHERE status = 'active' AND datetime(posted_at) < datetime(?, ?)
+    `).bind(
+      new Date().toISOString(),
+      new Date().toISOString(),
+      `-${QUALIFICATION_CONFIG.maximumJobAgeDays} days`,
+    ).run();
+    stats.status = stats.sourceFailures || stats.parsingFailures ? "partial" : "completed";
+  } catch (error) {
+    stats.status = "failed";
+    stats.sourceFailures = 1;
+    stats.errors.push(error instanceof Error ? error.message : String(error));
+  }
+
+  stats.finishedAt = new Date().toISOString();
+  await env.JOB_LOBSTER_DB.prepare(`
+    UPDATE ingestion_runs SET
+      status = ?, finished_at = ?, sources_planned = ?, searches_performed = ?, jobs_discovered = ?,
+      pages_fetched = ?, jobs_normalized = ?, jobs_accepted = ?, jobs_rejected = ?,
+      duplicates_removed = ?, parsing_failures = ?, source_failures = ?, error_summary = ?
+    WHERE id = ?
+  `).bind(
+    stats.status, stats.finishedAt, stats.sourcesPlanned, stats.searchesPerformed, stats.jobsDiscovered,
+    stats.pagesFetched, stats.jobsNormalized, stats.jobsAccepted, stats.jobsRejected,
+    stats.duplicatesRemoved, stats.parsingFailures, stats.sourceFailures,
+    stats.errors.length ? JSON.stringify(stats.errors.slice(0, 20)) : null, runId,
+  ).run();
+  console.log(JSON.stringify({
+    message: "external_platform_ingestion_complete",
+    collector: metadata.collector,
+    batchIndex: metadata.batchIndex,
+    totalBatches: metadata.totalBatches,
+    ...stats,
+  }));
   return stats;
 }
