@@ -23,6 +23,13 @@ AUDIENCE = "job-lobster-platform-ingest"
 COLLECTOR = "github-actions-jobspy/1.1.82"
 MAX_BATCH_SIZE = 100
 HOURS_OLD = 168
+GLASSDOOR_BROWSER_VERSION = "151"
+GLASSDOOR_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/"
+    + GLASSDOOR_BROWSER_VERSION
+    + ".0.0.0 Safari/537.36"
+)
 SUPPORTED_PROVIDERS = ("indeed", "glassdoor")
 RESULTS_WANTED = {
     "indeed": 125,
@@ -54,6 +61,44 @@ EXCLUDED_TITLE = re.compile(
     r"\b(product marketing|sales|account executive|engineer|intern(?:ship)?)\b",
     re.IGNORECASE,
 )
+
+
+def configure_glassdoor_compatibility() -> None:
+    """Apply upstream Glassdoor fixes not yet included in pinned JobSpy 1.1.82."""
+    from jobspy.glassdoor import Glassdoor
+    from jobspy.glassdoor.constant import headers
+
+    headers.update(
+        {
+            "sec-ch-ua": (
+                '"Not/A)Brand";v="99", "Google Chrome";v="'
+                + GLASSDOOR_BROWSER_VERSION
+                + '", "Chromium";v="'
+                + GLASSDOOR_BROWSER_VERSION
+                + '"'
+            ),
+            "sec-ch-ua-platform": '"Linux"',
+            "user-agent": GLASSDOOR_USER_AGENT,
+        }
+    )
+
+    def get_csrf_token(self: Any) -> str | None:
+        # Glassdoor retired the old generic jobs URL used by JobSpy 1.1.82.
+        base_url = self.base_url.rstrip("/")
+        hostname = urlparse(base_url).netloc
+        headers.update(
+            {
+                "authority": hostname,
+                "origin": base_url,
+                "referer": base_url + "/",
+            }
+        )
+        self.session.headers.update(headers)
+        response = self.session.get(base_url + "/")
+        match = re.search(r'"token":\\s*"([^\"]+)"', response.text)
+        return match.group(1) if match else None
+
+    Glassdoor._get_csrf_token = get_csrf_token
 
 
 def clean_scalar(value: Any) -> Any:
@@ -281,6 +326,8 @@ def row_to_job(
 
 
 def collect_jobs(provider: str) -> tuple[list[dict[str, Any]], int, int, list[str]]:
+    if provider == "glassdoor":
+        configure_glassdoor_compatibility()
     by_url: dict[str, dict[str, Any]] = {}
     collection_time = datetime.now(timezone.utc)
     searches_performed = 0
@@ -301,8 +348,20 @@ def collect_jobs(provider: str) -> tuple[list[dict[str, Any]], int, int, list[st
                     description_format="markdown",
                     enforce_annual_salary=False,
                     verbose=1,
+                    user_agent=(
+                        GLASSDOOR_USER_AGENT if provider == "glassdoor" else None
+                    ),
                 )
-                searches_succeeded += 1
+                row_count = len(frame)
+                if row_count > 0 or provider != "glassdoor":
+                    searches_succeeded += 1
+                else:
+                    errors.append(
+                        provider
+                        + "/"
+                        + country_name
+                        + ": provider returned no rows; check provider logs for blocking"
+                    )
                 for raw_record in frame.to_dict(orient="records"):
                     job = row_to_job(raw_record, country_name, provider)
                     if job and is_fresh_posting(job["postedAt"], collection_time):
@@ -313,7 +372,7 @@ def collect_jobs(provider: str) -> tuple[list[dict[str, Any]], int, int, list[st
                             "message": "platform_search_complete",
                             "provider": provider,
                             "country": country_name,
-                            "rows": len(frame),
+                            "rows": row_count,
                             "qualified_for_ingestion": len(by_url),
                         }
                     )
@@ -413,12 +472,15 @@ def main() -> None:
         raise RuntimeError(
             "Every " + provider + " search failed; no ingestion was attempted."
         )
+    if not jobs:
+        raise RuntimeError(
+            provider
+            + " returned no current qualifying jobs; no empty ingestion batch was sent."
+        )
     batches = [
         jobs[index : index + MAX_BATCH_SIZE]
         for index in range(0, len(jobs), MAX_BATCH_SIZE)
     ]
-    if not batches:
-        batches = [[]]
     collected_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     token = github_oidc_token()
     for batch_index, batch in enumerate(batches):
