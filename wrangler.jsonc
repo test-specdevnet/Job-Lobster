@@ -35,9 +35,6 @@
       "new_sqlite_classes": ["JobDiscoveryAgent"]
     }
   ],
-  "triggers": {
-    "crons": ["7,37 * * * *"]
-  },
   "vars": {
     "ALLOWED_ORIGINS": "https://job-lobster-globe.pages.dev,http://localhost:5174,http://127.0.0.1:5174",
     "AGENT_INSTANCE_NAME": "production",

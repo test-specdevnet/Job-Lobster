@@ -7,14 +7,18 @@ import { ATS_ADAPTERS } from "../providers/ats";
 import { getCurrencyRates } from "../providers/normalization/currency";
 import { normalizeLocation } from "../providers/normalization/job-fields";
 import { normalizeRawSalary, parseEmployerSalary } from "../providers/normalization/salary";
-import { ATS_SOURCES } from "../providers/source-catalog";
+import { sourcesForRun, type SourceRunMode } from "../providers/source-catalog";
 import type { AtsSource, RawAtsJob } from "../providers/types";
+
+export type DiscoveryRunMode = SourceRunMode;
 
 export interface DiscoveryRunStats {
   runId: string;
+  runMode: DiscoveryRunMode;
   status: "completed" | "partial" | "failed";
   startedAt: string;
   finishedAt: string;
+  sourcesPlanned: number;
   searchesPerformed: number;
   jobsDiscovered: number;
   pagesFetched: number;
@@ -77,15 +81,28 @@ async function classifyTitleWithAi(env: Env, job: RawAtsJob): Promise<TargetTitl
 
 async function upsertSource(db: D1Database, source: AtsSource) {
   await db.prepare(`
-    INSERT INTO sources (id, name, provider_type, base_url, enabled, updated_at)
-    VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+    INSERT INTO sources (
+      id, name, provider_type, provider_token, base_url, company_website,
+      scope, enabled, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       provider_type = excluded.provider_type,
+      provider_token = excluded.provider_token,
       base_url = excluded.base_url,
+      company_website = excluded.company_website,
+      scope = excluded.scope,
       enabled = 1,
       updated_at = CURRENT_TIMESTAMP
-  `).bind(source.id, source.name, source.provider, source.website ?? null).run();
+  `).bind(
+    source.id,
+    source.name,
+    source.provider,
+    source.token,
+    source.website ?? null,
+    source.website ?? null,
+    source.scope,
+  ).run();
 }
 
 async function markSourceSuccess(db: D1Database, sourceId: string, now: string) {
@@ -276,13 +293,21 @@ async function storeCandidate(
   ]);
 }
 
-export async function executeDiscoveryRun(env: Env, runId: string, startedAt = new Date()): Promise<DiscoveryRunStats> {
+export async function executeDiscoveryRun(
+  env: Env,
+  runId: string,
+  startedAt = new Date(),
+  runMode: DiscoveryRunMode = "core",
+): Promise<DiscoveryRunStats> {
   const startedIso = startedAt.toISOString();
+  const sources = sourcesForRun(runMode);
   const stats: DiscoveryRunStats = {
     runId,
+    runMode,
     status: "completed",
     startedAt: startedIso,
     finishedAt: startedIso,
+    sourcesPlanned: sources.length,
     searchesPerformed: 0,
     jobsDiscovered: 0,
     pagesFetched: 0,
@@ -296,15 +321,16 @@ export async function executeDiscoveryRun(env: Env, runId: string, startedAt = n
   };
 
   await env.JOB_LOBSTER_DB.prepare(
-    "INSERT INTO ingestion_runs (id, status, started_at) VALUES (?, 'running', ?)",
-  ).bind(runId, startedIso).run();
+    "INSERT INTO ingestion_runs (id, run_type, status, started_at) VALUES (?, ?, 'running', ?)",
+  ).bind(runId, runMode, startedIso).run();
 
   try {
     const rates = await getCurrencyRates(env.JOB_LOBSTER_DB, startedAt);
     const aiBudget = { remaining: 8 };
 
-    for (let offset = 0; offset < ATS_SOURCES.length; offset += 4) {
-      const batch = ATS_SOURCES.slice(offset, offset + 4);
+    const batchSize = runMode === "daily" || runMode === "full" ? 2 : 4;
+    for (let offset = 0; offset < sources.length; offset += batchSize) {
+      const batch = sources.slice(offset, offset + batchSize);
       const settled = await Promise.allSettled(batch.map(async (source) => {
         await upsertSource(env.JOB_LOBSTER_DB, source);
         if (await sourceInCooldown(env.JOB_LOBSTER_DB, source.id, startedIso)) return null;
@@ -352,12 +378,12 @@ export async function executeDiscoveryRun(env: Env, runId: string, startedAt = n
   stats.finishedAt = new Date().toISOString();
   await env.JOB_LOBSTER_DB.prepare(`
     UPDATE ingestion_runs SET
-      status = ?, finished_at = ?, searches_performed = ?, jobs_discovered = ?,
+      status = ?, finished_at = ?, sources_planned = ?, searches_performed = ?, jobs_discovered = ?,
       pages_fetched = ?, jobs_normalized = ?, jobs_accepted = ?, jobs_rejected = ?,
       duplicates_removed = ?, parsing_failures = ?, source_failures = ?, error_summary = ?
     WHERE id = ?
   `).bind(
-    stats.status, stats.finishedAt, stats.searchesPerformed, stats.jobsDiscovered,
+    stats.status, stats.finishedAt, stats.sourcesPlanned, stats.searchesPerformed, stats.jobsDiscovered,
     stats.pagesFetched, stats.jobsNormalized, stats.jobsAccepted, stats.jobsRejected,
     stats.duplicatesRemoved, stats.parsingFailures, stats.sourceFailures,
     stats.errors.length ? JSON.stringify(stats.errors.slice(0, 20)) : null, runId,

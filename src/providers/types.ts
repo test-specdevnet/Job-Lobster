@@ -1,12 +1,14 @@
 import type { EmploymentType, WorkType } from "../domain/job";
 
 export type AtsProvider = "ashby" | "greenhouse" | "lever";
+export type SourceScope = "core" | "daily";
 
 export interface AtsSource {
   id: string;
   name: string;
   provider: AtsProvider;
   token: string;
+  scope: SourceScope;
   website?: string;
 }
 

@@ -1,5 +1,6 @@
 import { getAgentByName } from "agents";
 import type { JobDiscoveryAgent } from "./agent";
+import type { DiscoveryRunMode } from "./pipeline";
 import { jsonResponse, methodNotAllowed, serverError } from "./http";
 import { buildJobsQuery, JOB_SELECT, parseJobFilters, rowToPublicJob, type JobRow } from "./jobs";
 
@@ -39,7 +40,7 @@ async function getStats(request: Request, env: Env) {
       AND datetime(posted_at) >= datetime('now', '-7 days')
   `).first();
   const latestRun = await env.JOB_LOBSTER_DB.prepare(
-    "SELECT id, status, started_at, finished_at, searches_performed, jobs_discovered, jobs_normalized, jobs_accepted, jobs_rejected, duplicates_removed, parsing_failures, source_failures FROM ingestion_runs ORDER BY datetime(started_at) DESC LIMIT 1",
+    "SELECT id, run_type, status, started_at, finished_at, sources_planned, searches_performed, jobs_discovered, jobs_normalized, jobs_accepted, jobs_rejected, duplicates_removed, parsing_failures, source_failures FROM ingestion_runs ORDER BY datetime(started_at) DESC LIMIT 1",
   ).first();
   return jsonResponse({ data: { jobs: stats, latestRun }, meta: { generatedAt: new Date().toISOString() } }, { headers: { "cache-control": "public, max-age=60" } });
 }
@@ -64,7 +65,11 @@ async function runAgent(request: Request, env: Env) {
     env.JOB_DISCOVERY_AGENT as DurableObjectNamespace<JobDiscoveryAgent>,
     env.AGENT_INSTANCE_NAME,
   );
-  return jsonResponse({ data: await agent.runPull("manual") }, { headers: { "cache-control": "no-store" } });
+  const requestedMode = new URL(request.url).searchParams.get("mode");
+  const runMode: DiscoveryRunMode = requestedMode === "core" || requestedMode === "daily" || requestedMode === "full"
+    ? requestedMode
+    : "full";
+  return jsonResponse({ data: await agent.runPull("manual", runMode) }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function handleApi(request: Request, env: Env) {
