@@ -9,7 +9,7 @@ import os
 import re
 import sys
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
@@ -125,6 +125,11 @@ def posted_at(value: Any) -> str | None:
     return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def is_fresh_posting(value: str, now: datetime) -> bool:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return now - timedelta(days=7) <= parsed <= now + timedelta(hours=6)
+
+
 def employment_type(value: Any) -> str:
     raw = re.sub(r"[^a-z]", "", clean_text(value).lower())
     return {
@@ -228,6 +233,7 @@ def row_to_job(record: dict[str, Any], fallback_country: str) -> dict[str, Any] 
 
 def collect_jobs() -> tuple[list[dict[str, Any]], int, int, list[str]]:
     by_url: dict[str, dict[str, Any]] = {}
+    collection_time = datetime.now(timezone.utc)
     searches_performed = 0
     searches_succeeded = 0
     errors: list[str] = []
@@ -249,7 +255,7 @@ def collect_jobs() -> tuple[list[dict[str, Any]], int, int, list[str]]:
                 searches_succeeded += 1
                 for raw_record in frame.to_dict(orient="records"):
                     job = row_to_job(raw_record, country_name)
-                    if job:
+                    if job and is_fresh_posting(job["postedAt"], collection_time):
                         by_url[job["sourceUrl"]] = job
                 print(
                     json.dumps(
