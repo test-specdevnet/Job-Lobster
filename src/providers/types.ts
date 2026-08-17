@@ -1,15 +1,25 @@
 import type { EmploymentType, WorkType } from "../domain/job";
 
 export type AtsProvider = "ashby" | "greenhouse" | "lever";
+export type WebSearchProvider = "linkedin" | "indeed" | "glassdoor";
+export type JobProvider = AtsProvider | WebSearchProvider;
 export type SourceScope = "core" | "daily";
 
-export interface AtsSource {
+export interface DiscoverySource {
   id: string;
   name: string;
-  provider: AtsProvider;
+  provider: JobProvider;
   token: string;
   scope: SourceScope;
   website?: string;
+}
+
+export interface AtsSource extends DiscoverySource {
+  provider: AtsProvider;
+}
+
+export interface WebSearchSource extends DiscoverySource {
+  provider: WebSearchProvider;
 }
 
 export interface RawSalary {
@@ -22,7 +32,7 @@ export interface RawSalary {
 
 export interface RawAtsJob {
   sourceId: string;
-  provider: AtsProvider;
+  provider: JobProvider;
   externalId: string;
   title: string;
   company: string;

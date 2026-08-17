@@ -11,6 +11,9 @@ const excludedRolePatterns = [
   /\bsales manager\b/,
   /\bsocial media intern\b/,
   /\bpublic affairs\b/,
+  /\binternal communications?\b/,
+  /\bcontent designer\b/,
+  /\btechnical writer\b/,
 ];
 
 const titleRules: Array<[TargetTitle, RegExp[]]> = [
@@ -47,6 +50,33 @@ const titleRules: Array<[TargetTitle, RegExp[]]> = [
   ["Marketing Manager", [/\bmarketing\s+manager\b/]],
 ];
 
+const verticalFallbackRules: Array<[TargetTitle, RegExp[]]> = [
+  ["Head of Content", [/\b(?:head|director|vice president|vp)\s+(?:of\s+)?content\b/, /\bcontent\s+(?:lead|director)\b/]],
+  ["Growth Lead", [/\b(?:head|director|vice president|vp)\s+(?:of\s+)?growth\b/, /\bgrowth\s+(?:lead|director)\b/]],
+  ["Marketing Lead", [
+    /\b(?:head|director|vice president|vp|chief)\s+(?:of\s+)?marketing\b/,
+    /\bmarketing\s+(?:lead|director)\b/,
+  ]],
+  ["Brand Marketing Manager", [/\bbrand\s+(?:manager|lead|director|strategist|specialist)\b/]],
+  ["Growth Marketing Manager", [
+    /\b(?:demand generation|demand gen|lifecycle|acquisition|performance|field|partner|channel|campaign|event)\s+marketing\s+(?:manager|lead|director|specialist)\b/,
+    /\b(?:head|director|lead)\s+(?:of\s+)?(?:demand generation|demand gen|lifecycle|acquisition|performance|field|partner|channel|campaign|event)\s+marketing\b/,
+    /\bgrowth\s+marketing\s+(?:lead|director|specialist|strategist)\b/,
+  ]],
+  ["SEO Manager", [/\bseo\s+(?:lead|director|specialist|strategist)\b/, /\bsearch engine optimization\s+(?:lead|specialist|strategist)\b/]],
+  ["Marketing Communications Manager", [/\b(?:communications|comms)\s+(?:manager|lead|director|strategist|specialist)\b/]],
+  ["Content Marketing Specialist", [/\bcontent\s+(?:writer|editor|producer|specialist)\b/, /\bcontent\s+marketing\s+(?:writer|editor|producer|strategist)\b/]],
+  ["Content Manager", [/\b(?:social media|editorial|creative content)\s+(?:manager|lead|strategist|specialist)\b/]],
+  ["Digital Marketing Specialist", [
+    /\bmarketing\s+(?:specialist|coordinator|analyst|strategist|associate)\b/,
+    /\bdigital\s+marketing\s+(?:lead|director|coordinator|analyst)\b/,
+  ]],
+  ["Marketing Manager", [
+    /\bmarketing\b.*\b(?:manager|lead|director|specialist|strategist|coordinator|analyst)\b/,
+    /\b(?:manager|lead|director|specialist|strategist|coordinator|analyst)\b.*\bmarketing\b/,
+  ]],
+];
+
 function canonicalize(value: string) {
   return value
     .normalize("NFKD")
@@ -67,7 +97,17 @@ export function normalizeTitle(originalTitle: string): TargetTitle | null {
     if (patterns.some((pattern) => pattern.test(title))) return normalizedTitle;
   }
 
+  for (const [normalizedTitle, patterns] of verticalFallbackRules) {
+    if (patterns.some((pattern) => pattern.test(title))) return normalizedTitle;
+  }
+
   return null;
+}
+
+export function isRelevantMarketingTitle(originalTitle: string) {
+  const title = canonicalize(originalTitle);
+  if (!title || excludedRolePatterns.some((pattern) => pattern.test(title))) return false;
+  return /\bmarketing\b|\bcontent\b|\bseo\b|\bgrowth\b|\bcommunications?\b|\bcomms\b|\bbrand\b|\bdemand gen(?:eration)?\b|\blifecycle\b|\bacquisition\b/.test(title);
 }
 
 export function isTargetTitle(value: string): value is TargetTitle {

@@ -1,9 +1,13 @@
 export const QUALIFICATION_CONFIG = {
   minimumSalaryCad: 70_000,
-  maximumJobAgeDays: 7,
+  salaryDisplayCeilingCad: 90_000,
+  maximumJobAgeDays: 30,
   decayStartHours: 72,
   annualHours: 2_080,
-  includeUnknownSalary: false,
+  includeUnknownSalary: true,
+  acceptGlobalHybrid: true,
+  acceptGlobalOnsite: true,
+  includeUnknownWorkType: true,
   targetTitles: [
     "Marketing Manager",
     "Digital Marketing Manager",

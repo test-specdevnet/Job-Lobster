@@ -1,16 +1,17 @@
 import { QUALIFICATION_CONFIG, type TargetTitle } from "../config/qualification";
 import { qualifyJob } from "../domain/qualification";
 import type { JobLocation, SalaryStatus } from "../domain/job";
-import { isTargetTitle, normalizeTitle } from "../domain/title-normalizer";
+import { isRelevantMarketingTitle, isTargetTitle, normalizeTitle } from "../domain/title-normalizer";
 import { convertToCad } from "../lib/salary";
 import { ATS_ADAPTERS } from "../providers/ats";
 import { getCurrencyRates } from "../providers/normalization/currency";
 import { normalizeLocation } from "../providers/normalization/job-fields";
 import { normalizeRawSalary, parseEmployerSalary } from "../providers/normalization/salary";
 import { sourcesForRun, type SourceRunMode } from "../providers/source-catalog";
-import type { AtsSource, RawAtsJob } from "../providers/types";
+import type { AtsSource, DiscoverySource, RawAtsJob } from "../providers/types";
+import { searchPublicJobPlatforms, WEB_SEARCH_SOURCES } from "../providers/web-search";
 
-export type DiscoveryRunMode = SourceRunMode;
+export type DiscoveryRunMode = SourceRunMode | "web";
 
 export interface DiscoveryRunStats {
   runId: string;
@@ -32,7 +33,7 @@ export interface DiscoveryRunStats {
 }
 
 function relevantTitle(title: string) {
-  return /marketing|content|\bseo\b|\bgeo\b|growth|communications?|\bcomms\b|brand|digital/i.test(title);
+  return isRelevantMarketingTitle(title);
 }
 
 async function sha256(value: string) {
@@ -53,8 +54,7 @@ function cleanKey(value: string | null | undefined) {
 async function classifyTitleWithAi(env: Env, job: RawAtsJob): Promise<TargetTitle | null> {
   if (!relevantTitle(job.title) || /\bproduct marketing\b/i.test(job.title)) return null;
   try {
-    const runner = env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
-    const result = await runner.run(env.TITLE_AI_MODEL, {
+    const result = await env.AI.run(env.TITLE_AI_MODEL, {
       messages: [
         {
           role: "system",
@@ -79,7 +79,7 @@ async function classifyTitleWithAi(env: Env, job: RawAtsJob): Promise<TargetTitl
   }
 }
 
-async function upsertSource(db: D1Database, source: AtsSource) {
+async function upsertSource(db: D1Database, source: DiscoverySource) {
   await db.prepare(`
     INSERT INTO sources (
       id, name, provider_type, provider_token, base_url, company_website,
@@ -297,10 +297,11 @@ export async function executeDiscoveryRun(
   env: Env,
   runId: string,
   startedAt = new Date(),
-  runMode: DiscoveryRunMode = "core",
+  runMode: SourceRunMode = "core",
+  sourceOverride?: readonly AtsSource[],
 ): Promise<DiscoveryRunStats> {
   const startedIso = startedAt.toISOString();
-  const sources = sourcesForRun(runMode);
+  const sources = sourceOverride ?? sourcesForRun(runMode);
   const stats: DiscoveryRunStats = {
     runId,
     runMode,
@@ -321,7 +322,7 @@ export async function executeDiscoveryRun(
   };
 
   await env.JOB_LOBSTER_DB.prepare(
-    "INSERT INTO ingestion_runs (id, run_type, status, started_at) VALUES (?, ?, 'running', ?)",
+    "INSERT INTO ingestion_runs (id, run_type, discovery_channel, status, started_at) VALUES (?, ?, 'ats', 'running', ?)",
   ).bind(runId, runMode, startedIso).run();
 
   try {
@@ -367,8 +368,12 @@ export async function executeDiscoveryRun(
 
     await env.JOB_LOBSTER_DB.prepare(`
       UPDATE jobs SET status = 'expired', updated_at = ?
-      WHERE status = 'active' AND datetime(posted_at) < datetime(?, '-7 days')
-    `).bind(new Date().toISOString(), new Date().toISOString()).run();
+      WHERE status = 'active' AND datetime(posted_at) < datetime(?, ?)
+    `).bind(
+      new Date().toISOString(),
+      new Date().toISOString(),
+      `-${QUALIFICATION_CONFIG.maximumJobAgeDays} days`,
+    ).run();
     stats.status = stats.sourceFailures || stats.parsingFailures ? "partial" : "completed";
   } catch (error) {
     stats.status = "failed";
@@ -389,5 +394,105 @@ export async function executeDiscoveryRun(
     stats.errors.length ? JSON.stringify(stats.errors.slice(0, 20)) : null, runId,
   ).run();
   console.log("discovery_run_complete", stats);
+  return stats;
+}
+
+export async function executeWebDiscoveryRun(
+  env: Env,
+  runId: string,
+  startedAt = new Date(),
+): Promise<DiscoveryRunStats> {
+  const startedIso = startedAt.toISOString();
+  const stats: DiscoveryRunStats = {
+    runId,
+    runMode: "web",
+    status: "completed",
+    startedAt: startedIso,
+    finishedAt: startedIso,
+    sourcesPlanned: WEB_SEARCH_SOURCES.length,
+    searchesPerformed: 0,
+    jobsDiscovered: 0,
+    pagesFetched: 0,
+    jobsNormalized: 0,
+    jobsAccepted: 0,
+    jobsRejected: 0,
+    duplicatesRemoved: 0,
+    parsingFailures: 0,
+    sourceFailures: 0,
+    errors: [],
+  };
+
+  await env.JOB_LOBSTER_DB.prepare(
+    "INSERT INTO ingestion_runs (id, run_type, discovery_channel, status, started_at) VALUES (?, 'daily', 'web', 'running', ?)",
+  ).bind(runId, startedIso).run();
+
+  try {
+    for (const source of WEB_SEARCH_SOURCES) {
+      await upsertSource(env.JOB_LOBSTER_DB, source);
+    }
+
+    const rates = await getCurrencyRates(env.JOB_LOBSTER_DB, startedAt);
+    const aiBudget = { remaining: 12 };
+    const results = await searchPublicJobPlatforms(env.BROWSER, env.WEBSEARCH, startedAt);
+
+    for (const result of results) {
+      stats.searchesPerformed += result.searchesPerformed;
+      stats.pagesFetched += result.pagesFetched;
+      stats.jobsDiscovered += result.jobs.length;
+      if (result.errors.length) {
+        stats.sourceFailures += 1;
+        stats.errors.push(...result.errors.map((error) => `${result.source.id}: ${error}`));
+      }
+
+      if (result.successfulSearches > 0) {
+        await markSourceSuccess(env.JOB_LOBSTER_DB, result.source.id, new Date().toISOString());
+      } else {
+        await markSourceFailure(env.JOB_LOBSTER_DB, result.source.id, startedAt);
+      }
+
+      for (const job of result.jobs.filter((candidate) => relevantTitle(candidate.title))) {
+        try {
+          await storeCandidate(env, runId, job, startedAt, rates, aiBudget, stats);
+        } catch (error) {
+          stats.parsingFailures += 1;
+          console.warn("web_candidate_processing_failed", {
+            runId,
+            source: result.source.id,
+            externalId: job.externalId,
+            error: String(error),
+          });
+        }
+      }
+    }
+
+    await env.JOB_LOBSTER_DB.prepare(`
+      UPDATE jobs SET status = 'expired', updated_at = ?
+      WHERE status = 'active' AND datetime(posted_at) < datetime(?, ?)
+    `).bind(
+      new Date().toISOString(),
+      new Date().toISOString(),
+      `-${QUALIFICATION_CONFIG.maximumJobAgeDays} days`,
+    ).run();
+    stats.status = stats.sourceFailures || stats.parsingFailures ? "partial" : "completed";
+  } catch (error) {
+    stats.status = "failed";
+    stats.sourceFailures = WEB_SEARCH_SOURCES.length;
+    stats.errors.push(error instanceof Error ? error.message : String(error));
+  }
+
+  stats.finishedAt = new Date().toISOString();
+  await env.JOB_LOBSTER_DB.prepare(`
+    UPDATE ingestion_runs SET
+      status = ?, finished_at = ?, sources_planned = ?, searches_performed = ?, jobs_discovered = ?,
+      pages_fetched = ?, jobs_normalized = ?, jobs_accepted = ?, jobs_rejected = ?,
+      duplicates_removed = ?, parsing_failures = ?, source_failures = ?, error_summary = ?
+    WHERE id = ?
+  `).bind(
+    stats.status, stats.finishedAt, stats.sourcesPlanned, stats.searchesPerformed, stats.jobsDiscovered,
+    stats.pagesFetched, stats.jobsNormalized, stats.jobsAccepted, stats.jobsRejected,
+    stats.duplicatesRemoved, stats.parsingFailures, stats.sourceFailures,
+    stats.errors.length ? JSON.stringify(stats.errors.slice(0, 20)) : null, runId,
+  ).run();
+  console.log("web_discovery_run_complete", stats);
   return stats;
 }

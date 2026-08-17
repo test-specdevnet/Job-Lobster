@@ -14,7 +14,17 @@ function inferCurrency(text: string, country: string | null) {
   if (/\bgbp\b|£/.test(text)) return "GBP";
   if (/\beur\b|€/.test(text)) return "EUR";
   if (/\baud\b|a\$/i.test(text)) return "AUD";
-  if (/\$/.test(text)) return /canada/i.test(country ?? "") ? "CAD" : "USD";
+  const currencyCode = text.match(/\b(NZD|JPY|CNY|HKD|SGD|INR|CHF|SEK|NOK|DKK|PLN|CZK|HUF|RON|BGN|BRL|MXN|KRW|ZAR|TRY|ILS|IDR|MYR|PHP|THB)\b/i)?.[1];
+  if (currencyCode) return currencyCode.toUpperCase();
+  if (/¥/.test(text)) return /japan/i.test(country ?? "") ? "JPY" : "CNY";
+  if (/\$/.test(text)) {
+    if (/canada/i.test(country ?? "")) return "CAD";
+    if (/australia/i.test(country ?? "")) return "AUD";
+    if (/new zealand/i.test(country ?? "")) return "NZD";
+    if (/singapore/i.test(country ?? "")) return "SGD";
+    if (/hong kong/i.test(country ?? "")) return "HKD";
+    return "USD";
+  }
   return null;
 }
 
@@ -39,8 +49,9 @@ export function parseEmployerSalary(description: string, country: string | null)
   const windows = compensationStarts.map((start) => description.slice(start, start + 700));
   windows.push(description);
 
-  const rangePattern = /((?:CA|US|A)?\$|£|€|\b(?:CAD|USD|GBP|EUR|AUD)\b)?\s*(\d{2,3}(?:[,.]\d{3})*(?:\.\d+)?\s*[kK]?)\s*(?:-|–|—|to)\s*((?:CA|US|A)?\$|£|€|\b(?:CAD|USD|GBP|EUR|AUD)\b)?\s*(\d{2,3}(?:[,.]\d{3})*(?:\.\d+)?\s*[kK]?)/i;
-  const singlePattern = /((?:CA|US|A)?\$|£|€|\b(?:CAD|USD|GBP|EUR|AUD)\b)\s*(\d{2,3}(?:[,.]\d{3})*(?:\.\d+)?\s*[kK]?)/i;
+  const currency = "(?:CAD|USD|GBP|EUR|AUD|NZD|JPY|CNY|HKD|SGD|INR|CHF|SEK|NOK|DKK|PLN|CZK|HUF|RON|BGN|BRL|MXN|KRW|ZAR|TRY|ILS|IDR|MYR|PHP|THB)";
+  const rangePattern = new RegExp(`((?:CA|US|A)?\\$|£|€|¥|\\b${currency}\\b)?\\s*(\\d{2,3}(?:[,.]\\d{3})*(?:\\.\\d+)?\\s*[kK]?)\\s*(?:-|–|—|to)\\s*((?:CA|US|A)?\\$|£|€|¥|\\b${currency}\\b)?\\s*(\\d{2,3}(?:[,.]\\d{3})*(?:\\.\\d+)?\\s*[kK]?)`, "i");
+  const singlePattern = new RegExp(`((?:CA|US|A)?\\$|£|€|¥|\\b${currency}\\b)\\s*(\\d{2,3}(?:[,.]\\d{3})*(?:\\.\\d+)?\\s*[kK]?)`, "i");
 
   for (const window of windows) {
     const range = window.match(rangePattern);

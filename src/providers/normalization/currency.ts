@@ -9,6 +9,11 @@ const FALLBACK_CAD_PER_UNIT: Record<string, number> = {
   EUR: 1.61,
   GBP: 1.86,
   AUD: 0.90,
+  NZD: 0.83,
+  JPY: 0.0093,
+  SGD: 1.08,
+  INR: 0.0157,
+  CHF: 1.75,
 };
 
 export interface CurrencyRates {
@@ -38,10 +43,10 @@ export async function getCurrencyRates(db: D1Database, now = new Date()): Promis
     if (!response.ok) throw new Error(`Currency service returned ${response.status}`);
     const payload = (await response.json()) as FrankfurterResponse;
     const cadPerUnit: Record<string, number> = { CAD: 1 };
-    for (const currency of Object.keys(FALLBACK_CAD_PER_UNIT)) {
-      if (currency === "CAD") continue;
-      const unitsPerCad = payload.rates[currency];
-      if (unitsPerCad) cadPerUnit[currency] = 1 / unitsPerCad;
+    for (const [currency, unitsPerCad] of Object.entries(payload.rates)) {
+      if (Number.isFinite(unitsPerCad) && unitsPerCad > 0) {
+        cadPerUnit[currency.toUpperCase()] = 1 / unitsPerCad;
+      }
     }
 
     const expiresAt = new Date(now.getTime() + 12 * 3_600_000).toISOString();

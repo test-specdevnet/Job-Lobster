@@ -1,6 +1,7 @@
 import { getAgentByName } from "agents";
+import { QUALIFICATION_CONFIG } from "../config/qualification";
+import type { SourceRunMode } from "../providers/source-catalog";
 import type { JobDiscoveryAgent } from "./agent";
-import type { DiscoveryRunMode } from "./pipeline";
 import { jsonResponse, methodNotAllowed, serverError } from "./http";
 import { buildJobsQuery, JOB_SELECT, parseJobFilters, rowToPublicJob, type JobRow } from "./jobs";
 
@@ -12,7 +13,7 @@ async function listJobs(request: Request, env: Env) {
   const result = await env.JOB_LOBSTER_DB.prepare(query.sql).bind(...query.bindings).all<JobRow>();
   const data = result.results.map((row) => rowToPublicJob(row, now));
   return jsonResponse(
-    { data, meta: { count: data.length, generatedAt: now.toISOString(), activeWindowDays: 7, filters } },
+    { data, meta: { count: data.length, generatedAt: now.toISOString(), activeWindowDays: QUALIFICATION_CONFIG.maximumJobAgeDays, filters } },
     { headers: { "cache-control": "public, max-age=120, stale-while-revalidate=600" } },
   );
 }
@@ -20,8 +21,8 @@ async function listJobs(request: Request, env: Env) {
 async function getJob(request: Request, env: Env, id: string) {
   if (request.method !== "GET") return methodNotAllowed();
   const row = await env.JOB_LOBSTER_DB.prepare(
-    `${JOB_SELECT} WHERE id = ? AND qualification_status = 'accepted' AND status = 'active' AND datetime(posted_at) >= datetime('now', '-7 days') LIMIT 1`,
-  ).bind(id).first<JobRow>();
+    `${JOB_SELECT} WHERE id = ? AND qualification_status = 'accepted' AND status = 'active' AND datetime(posted_at) >= datetime('now', ?) LIMIT 1`,
+  ).bind(id, `-${QUALIFICATION_CONFIG.maximumJobAgeDays} days`).first<JobRow>();
   if (!row) return jsonResponse({ error: { code: "not_found", message: "No active job was found with that id." } }, { status: 404 });
   return jsonResponse({ data: rowToPublicJob(row) }, { headers: { "cache-control": "public, max-age=120" } });
 }
@@ -37,10 +38,10 @@ async function getStats(request: Request, env: Env) {
       MAX(discovered_at) AS last_discovered_at
     FROM jobs
     WHERE qualification_status = 'accepted' AND status = 'active'
-      AND datetime(posted_at) >= datetime('now', '-7 days')
-  `).first();
+      AND datetime(posted_at) >= datetime('now', ?)
+  `).bind(`-${QUALIFICATION_CONFIG.maximumJobAgeDays} days`).first();
   const latestRun = await env.JOB_LOBSTER_DB.prepare(
-    "SELECT id, run_type, status, started_at, finished_at, sources_planned, searches_performed, jobs_discovered, jobs_normalized, jobs_accepted, jobs_rejected, duplicates_removed, parsing_failures, source_failures FROM ingestion_runs ORDER BY datetime(started_at) DESC LIMIT 1",
+    "SELECT id, run_type, discovery_channel, status, started_at, finished_at, sources_planned, searches_performed, jobs_discovered, jobs_normalized, jobs_accepted, jobs_rejected, duplicates_removed, parsing_failures, source_failures FROM ingestion_runs ORDER BY datetime(started_at) DESC LIMIT 1",
   ).first();
   return jsonResponse({ data: { jobs: stats, latestRun }, meta: { generatedAt: new Date().toISOString() } }, { headers: { "cache-control": "public, max-age=60" } });
 }
@@ -54,11 +55,29 @@ async function getAgentStatus(request: Request, env: Env) {
   return jsonResponse({ data: await agent.getStatus(), meta: { generatedAt: new Date().toISOString() } }, { headers: { "cache-control": "no-store" } });
 }
 
+async function secretsMatch(left: string, right: string) {
+  const encoder = new TextEncoder();
+  const [leftDigest, rightDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(left)),
+    crypto.subtle.digest("SHA-256", encoder.encode(right)),
+  ]);
+  const leftBytes = new Uint8Array(leftDigest);
+  const rightBytes = new Uint8Array(rightDigest);
+  let difference = 0;
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    difference |= leftBytes[index] ^ rightBytes[index];
+  }
+  return difference === 0;
+}
+
 async function runAgent(request: Request, env: Env) {
   if (request.method !== "POST") return methodNotAllowed("POST");
-  const manualRunToken = (env as unknown as { MANUAL_RUN_TOKEN?: string }).MANUAL_RUN_TOKEN;
+  const configuredToken = Reflect.get(env, "MANUAL_RUN_TOKEN");
+  const manualRunToken = typeof configuredToken === "string" ? configuredToken : null;
   const authorization = request.headers.get("authorization");
-  if (!manualRunToken || authorization !== `Bearer ${manualRunToken}`) {
+  const providedToken = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+  const authorized = Boolean(manualRunToken && providedToken && await secretsMatch(manualRunToken, providedToken));
+  if (!authorized) {
     return jsonResponse({ error: { code: "unauthorized", message: "Valid operator authorization is required." } }, { status: 401 });
   }
   const agent = await getAgentByName<Env, JobDiscoveryAgent>(
@@ -66,7 +85,10 @@ async function runAgent(request: Request, env: Env) {
     env.AGENT_INSTANCE_NAME,
   );
   const requestedMode = new URL(request.url).searchParams.get("mode");
-  const runMode: DiscoveryRunMode = requestedMode === "core" || requestedMode === "daily" || requestedMode === "full"
+  if (requestedMode === "web") {
+    return jsonResponse({ data: await agent.runWebSearch("manual") }, { headers: { "cache-control": "no-store" } });
+  }
+  const runMode: SourceRunMode = requestedMode === "core" || requestedMode === "daily" || requestedMode === "full"
     ? requestedMode
     : "full";
   return jsonResponse({ data: await agent.runPull("manual", runMode) }, { headers: { "cache-control": "no-store" } });

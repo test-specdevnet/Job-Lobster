@@ -100,16 +100,20 @@ export function qualifyJob(
   }
 
   if (candidate.workType === "hybrid") {
-    const allowed = QUALIFICATION_CONFIG.hybridRegions.some((region) =>
-      locationMatches(candidate.location, region),
-    );
-    if (!allowed) return reject(normalizedTitle, "hybrid_location_not_allowed", ageHours);
+    if (!QUALIFICATION_CONFIG.acceptGlobalHybrid) {
+      const allowed = QUALIFICATION_CONFIG.hybridRegions.some((region) =>
+        locationMatches(candidate.location, region),
+      );
+      if (!allowed) return reject(normalizedTitle, "hybrid_location_not_allowed", ageHours);
+    }
   } else if (candidate.workType === "onsite") {
-    const allowed = QUALIFICATION_CONFIG.onsiteCities.some((location) =>
-      locationMatches(candidate.location, location),
-    );
-    if (!allowed) return reject(normalizedTitle, "onsite_location_not_allowed", ageHours);
-  } else if (candidate.workType === "unknown") {
+    if (!QUALIFICATION_CONFIG.acceptGlobalOnsite) {
+      const allowed = QUALIFICATION_CONFIG.onsiteCities.some((location) =>
+        locationMatches(candidate.location, location),
+      );
+      if (!allowed) return reject(normalizedTitle, "onsite_location_not_allowed", ageHours);
+    }
+  } else if (candidate.workType === "unknown" && !QUALIFICATION_CONFIG.includeUnknownWorkType) {
     return reject(normalizedTitle, "work_type_unknown", ageHours);
   }
 

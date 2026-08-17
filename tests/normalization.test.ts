@@ -33,4 +33,10 @@ describe("live-feed normalization", () => {
   it("does not drift into product marketing roles outside the configured taxonomy", () => {
     expect(normalizeTitle("Senior Product Marketing Manager")).toBeNull();
   });
+
+  it("maps broader management-level roles inside the marketing vertical", () => {
+    expect(normalizeTitle("Director of Lifecycle Marketing")).toBe("Growth Marketing Manager");
+    expect(normalizeTitle("VP of Marketing")).toBe("Marketing Lead");
+    expect(normalizeTitle("SEO Specialist")).toBe("SEO Manager");
+  });
 });

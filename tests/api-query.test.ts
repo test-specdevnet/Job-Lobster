@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildJobsQuery, parseAgeToHours, parseJobFilters, rowToPublicJob } from "../src/worker/jobs";
 
 describe("jobs API query", () => {
-  it("parses supported filters and caps the active window at seven days", () => {
+  it("parses supported filters and caps the active window at 30 days", () => {
     const filters = parseJobFilters(
       new URL(
         "https://lobster.example/api/v1/jobs?workType=remote&normalizedTitle=Head%20of%20Content&minSalary=90000&maxAge=30d&limit=900",
@@ -13,7 +13,7 @@ describe("jobs API query", () => {
       workType: "remote",
       normalizedTitle: "Head of Content",
       minSalary: 90_000,
-      maxAgeHours: 168,
+      maxAgeHours: 720,
       limit: 500,
     });
     expect(parseAgeToHours("72h")).toBe(72);

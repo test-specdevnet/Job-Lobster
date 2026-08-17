@@ -85,7 +85,7 @@ describe("qualification engine", () => {
     expect(result.status).toBe("accepted");
   });
 
-  it("rejects a hybrid role outside the allowed regions", () => {
+  it("accepts a global hybrid role for international discovery", () => {
     const result = qualifyJob(
       candidate({
         originalTitle: "Hybrid Growth Manager",
@@ -94,10 +94,10 @@ describe("qualification engine", () => {
       }),
       now,
     );
-    expect(result.rejectionReason).toBe("hybrid_location_not_allowed");
+    expect(result.status).toBe("accepted");
   });
 
-  it("rejects an on-site role outside the allowed cities", () => {
+  it("accepts a global on-site role for international discovery", () => {
     const result = qualifyJob(
       candidate({
         workType: "onsite",
@@ -105,7 +105,7 @@ describe("qualification engine", () => {
       }),
       now,
     );
-    expect(result.rejectionReason).toBe("onsite_location_not_allowed");
+    expect(result.status).toBe("accepted");
   });
 
   it("rejects a role below the CAD salary floor", () => {
@@ -113,8 +113,8 @@ describe("qualification engine", () => {
     expect(result.rejectionReason).toBe("salary_below_threshold");
   });
 
-  it("rejects a listing older than seven days", () => {
-    const result = qualifyJob(candidate({ postedAt: "2026-08-05T12:00:00.000Z" }), now);
+  it("rejects a listing older than 30 days", () => {
+    const result = qualifyJob(candidate({ postedAt: "2026-07-01T12:00:00.000Z" }), now);
     expect(result.rejectionReason).toBe("posting_too_old");
   });
 
@@ -123,9 +123,9 @@ describe("qualification engine", () => {
     expect(result.rejectionReason).toBe("title_not_match");
   });
 
-  it("rejects unknown salary under the initial production policy", () => {
+  it("keeps undisclosed salary roles visible for manual review", () => {
     const result = qualifyJob(candidate({ salaryCadMin: null, salaryStatus: "unknown" }), now);
-    expect(result.rejectionReason).toBe("salary_unknown");
+    expect(result.status).toBe("accepted");
   });
 
   it("marks jobs older than 72 hours as fading", () => {

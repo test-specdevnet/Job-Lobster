@@ -10,18 +10,21 @@ It is an autonomous job-discovery agent, not an application-submission bot. It f
 - Cloudflare Agents SDK Durable Object (`JobDiscoveryAgent`) for durable run state and autonomous schedules
 - Agent-owned core refresh at minute 7 and 37 of every hour
 - Agent-owned deep scrape every 24 hours at 09:00 UTC
+- Agent-owned Cloudflare Web Search every 24 hours at 10:30 UTC across LinkedIn, Indeed, and Glassdoor public job results for remote US and Canadian marketing roles
+- A second Browser Run pass expands LinkedIn coverage while the indexed search discovers all three platforms without depending on their search pages loading in a headless browser
+- Deep scrapes fan out into bounded 12-source invocations so the 188-board catalog stays within Worker request limits
 - Cloudflare D1 for jobs, discoveries, sources, ingestion runs, and exchange-rate cache
 - Public Ashby, Greenhouse, and Lever adapters with bounded concurrency, timeouts, retries, and source cooldowns
 - Workers AI as a narrow fallback for ambiguous marketing-title classification
 - Employer-provided salary parsing plus CAD normalization using cached ECB/Frankfurter rates
-- Dedupe, seven-day expiry, rejection reasons, source health, and observability logs
-- No automated application submission and no scraping of LinkedIn, Indeed, or Glassdoor
+- Dedupe, 30-day expiry, rejection reasons, source health, and observability logs
+- No automated application submission and no authenticated-session, login-wall, or anti-bot bypass
 
-The catalog contains 72 verified employer ATS boards: 32 core boards refreshed frequently and 40 larger boards scanned by the daily deep cycle. The groups keep each run below the public-request budget while materially broadening coverage. Adding an employer is a source-catalog change; qualification rules remain independent of provider code.
+The catalog contains 188 verified employer ATS boards: 32 core boards refreshed frequently and 156 boards scanned by the daily deep cycle. A separate Cloudflare Web Search cycle searches public LinkedIn, Indeed, and Glassdoor remote-job results for both the United States and Canada, with a Browser Run depth pass for LinkedIn. Web candidates must expose explicit posting-age evidence no older than seven days before they enter the common qualification pipeline.
 
 ## Qualification policy
 
-The pipeline keeps both original and normalized titles. It accepts global remote work, restricts hybrid and on-site geography, requires a verified minimum salary converted to CAD, and excludes postings older than seven days. Rejected discoveries remain auditable with reasons such as `title_not_match`, `salary_below_threshold`, `hybrid_location_not_allowed`, `onsite_location_not_allowed`, `salary_unknown`, and `posting_too_old`.
+The pipeline keeps both original and normalized titles. It accepts worldwide remote, hybrid, and on-site listings in the target marketing vertical and excludes postings older than 30 days. Known compensation is converted to CAD using cached live exchange rates and must meet the $70,000 CAD floor; undisclosed compensation remains visible for manual review. Rejected discoveries remain auditable with reasons such as `title_not_match`, `salary_below_threshold`, `salary_unknown`, and `posting_too_old`.
 
 Change thresholds and allowed locations in `src/config/qualification.ts`. Do not duplicate policy in adapters or API routes.
 
@@ -35,9 +38,9 @@ Change thresholds and allowed locations in `src/config/qualification.ts`. Do not
 | `GET /api/v1/jobs/:id` | One active, qualified job |
 | `GET /api/v1/stats` | Public aggregate counts |
 
-`GET /api/v1/jobs` supports `title`, `normalizedTitle`, `location`, `country`, `region`, `workType`, `minSalary`, `maxAge`, `company`, `postedSince`, and `limit`. `maxAge` accepts values such as `24h` or `7d` and is capped at seven days.
+`GET /api/v1/jobs` supports `title`, `normalizedTitle`, `location`, `country`, `region`, `workType`, `minSalary`, `maxAge`, `company`, `postedSince`, and `limit`. `maxAge` accepts values such as `24h`, `7d`, or `30d` and is capped at 30 days.
 
-The protected `POST /api/v1/agent/run` operator endpoint starts an on-demand pull when supplied with the Wrangler secret `MANUAL_RUN_TOKEN`. Optional `mode=core`, `mode=daily`, or `mode=full` selects its scope. It is not called by Job Globe.
+The protected `POST /api/v1/agent/run` operator endpoint starts an on-demand pull when supplied with the Wrangler secret `MANUAL_RUN_TOKEN`. Optional `mode=core`, `mode=daily`, `mode=full`, or `mode=web` selects its scope. It is not called by Job Globe.
 
 ## Local development
 
@@ -61,7 +64,7 @@ npm run worker:check
 
 ## Cloudflare deployment
 
-The committed `wrangler.jsonc` contains the production D1, Agents SDK Durable Object, Workers AI, static-assets, and observability bindings. Recurring jobs are persisted inside the agent's SQLite-backed scheduler instead of depending on a Worker-level cron. For a fresh Cloudflare account, create a D1 database and replace its ID before migrating.
+The committed `wrangler.jsonc` contains the production D1, Agents SDK Durable Object, Workers AI, Web Search, Browser Run, static-assets, and observability bindings. Recurring jobs are persisted inside the agent's SQLite-backed scheduler instead of depending on a Worker-level cron. For a fresh Cloudflare account, create a D1 database and replace its ID before migrating. Cloudflare Web Search is an experimental account entitlement; when it is unavailable the run records `account_disabled` per source and the independent LinkedIn Browser Run continues.
 
 ```bash
 npm run db:migrate:remote

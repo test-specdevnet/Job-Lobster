@@ -121,14 +121,15 @@ export function parseJobFilters(url: URL): JobFilters {
     maxAgeHours: parseAgeToHours(url.searchParams.get("maxAge")),
     company: url.searchParams.get("company")?.trim() || undefined,
     postedSince: url.searchParams.get("postedSince")?.trim() || undefined,
-    limit: Math.max(1, Math.min(Math.floor(requestedLimit ?? 200), 500)),
+    limit: Math.max(1, Math.min(Math.floor(requestedLimit ?? 500), 500)),
   };
 }
 
 export function buildJobsQuery(filters: JobFilters, now = new Date()) {
   const clauses = ["qualification_status = 'accepted'", "status = 'active'", "latitude IS NOT NULL", "longitude IS NOT NULL"];
   const bindings: Array<string | number> = [];
-  const maximumAge = Math.min(filters.maxAgeHours ?? 168, 168);
+  const maximumWindowHours = QUALIFICATION_CONFIG.maximumJobAgeDays * 24;
+  const maximumAge = Math.min(filters.maxAgeHours ?? maximumWindowHours, maximumWindowHours);
   let activeSince = new Date(now.getTime() - maximumAge * 3_600_000);
   if (filters.postedSince) {
     const requested = new Date(filters.postedSince);
