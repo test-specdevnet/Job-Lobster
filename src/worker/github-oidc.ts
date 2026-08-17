@@ -12,7 +12,7 @@ export interface VerifiedGitHubActionsIdentity {
   runId: string;
   runAttempt: string;
   workflowRef: string;
-  eventName: "schedule" | "workflow_dispatch";
+  eventName: "push" | "schedule" | "workflow_dispatch";
 }
 
 export class GitHubOidcError extends Error {}
@@ -102,7 +102,7 @@ function validateClaims(claims: Record<string, unknown>, now: Date): VerifiedGit
     throw new GitHubOidcError("OIDC runner environment is not trusted.");
   }
   const eventName = claimString(claims, "event_name");
-  if (eventName !== "schedule" && eventName !== "workflow_dispatch") {
+  if (eventName !== "push" && eventName !== "schedule" && eventName !== "workflow_dispatch") {
     throw new GitHubOidcError("OIDC event is not trusted.");
   }
 
