@@ -20,20 +20,13 @@ from jobspy import scrape_jobs
 
 
 AUDIENCE = "job-lobster-platform-ingest"
-COLLECTOR = "github-actions-jobspy/1.1.82"
+COLLECTOR = "github-actions-jobspy/1.1.82+jsearch-v2"
 MAX_BATCH_SIZE = 100
 HOURS_OLD = 168
-GLASSDOOR_BROWSER_VERSION = "151"
-GLASSDOOR_USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/"
-    + GLASSDOOR_BROWSER_VERSION
-    + ".0.0.0 Safari/537.36"
-)
-SUPPORTED_PROVIDERS = ("indeed", "glassdoor")
+JSEARCH_API_URL = "https://api.openwebninja.com/jsearch/search-v2"
+SUPPORTED_PROVIDERS = ("indeed", "linkedin", "glassdoor")
 RESULTS_WANTED = {
     "indeed": 125,
-    "glassdoor": 100,
 }
 SEARCH_TERMS = {
     "indeed": (
@@ -42,17 +35,15 @@ SEARCH_TERMS = {
         '("content marketing manager" OR "communications manager") remote -product',
         '("brand marketing manager" OR "marketing lead" OR "head of content") remote -product',
     ),
-    "glassdoor": (
-        "marketing manager",
-        "digital marketing manager",
-        "content marketing manager",
-        "marketing lead",
-    ),
 }
 COUNTRIES = (
     ("USA", "United States"),
     ("Canada", "Canada"),
 )
+JSEARCH_COUNTRY_CODES = {
+    "USA": "us",
+    "Canada": "ca",
+}
 TARGET_TITLE = re.compile(
     r"\b(marketing|brand|content|communications?|growth|seo|geo)\b",
     re.IGNORECASE,
@@ -61,44 +52,6 @@ EXCLUDED_TITLE = re.compile(
     r"\b(product marketing|sales|account executive|engineer|intern(?:ship)?)\b",
     re.IGNORECASE,
 )
-
-
-def configure_glassdoor_compatibility() -> None:
-    """Apply upstream Glassdoor fixes not yet included in pinned JobSpy 1.1.82."""
-    from jobspy.glassdoor import Glassdoor
-    from jobspy.glassdoor.constant import headers
-
-    headers.update(
-        {
-            "sec-ch-ua": (
-                '"Not/A)Brand";v="99", "Google Chrome";v="'
-                + GLASSDOOR_BROWSER_VERSION
-                + '", "Chromium";v="'
-                + GLASSDOOR_BROWSER_VERSION
-                + '"'
-            ),
-            "sec-ch-ua-platform": '"Linux"',
-            "user-agent": GLASSDOOR_USER_AGENT,
-        }
-    )
-
-    def get_csrf_token(self: Any) -> str | None:
-        # Glassdoor retired the old generic jobs URL used by JobSpy 1.1.82.
-        base_url = self.base_url.rstrip("/")
-        hostname = urlparse(base_url).netloc
-        headers.update(
-            {
-                "authority": hostname,
-                "origin": base_url,
-                "referer": base_url + "/",
-            }
-        )
-        self.session.headers.update(headers)
-        response = self.session.get(base_url + "/")
-        match = re.search(r'"token":\\s*"([^\"]+)"', response.text)
-        return match.group(1) if match else None
-
-    Glassdoor._get_csrf_token = get_csrf_token
 
 
 def clean_scalar(value: Any) -> Any:
@@ -173,6 +126,15 @@ def canonical_platform_url(
             )
             return canonical, job_key
         return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", "")), None
+
+    if provider == "linkedin":
+        if hostname != "linkedin.com" and not hostname.endswith(".linkedin.com"):
+            return None, None
+        match = re.search(r"/jobs/view/(?:[^/?#]*-)?(\d+)", parsed.path)
+        if not match:
+            return None, None
+        listing_id = match.group(1)
+        return "https://www.linkedin.com/jobs/view/" + listing_id, listing_id
 
     glassdoor_host = (
         hostname == "glassdoor.com"
@@ -325,9 +287,165 @@ def row_to_job(
     }
 
 
+def jsearch_platform_url(
+    record: dict[str, Any], provider: str
+) -> tuple[str | None, str | None]:
+    options = record.get("apply_options")
+    candidates: list[tuple[str, Any]] = []
+    if isinstance(options, list):
+        for option in options:
+            if not isinstance(option, dict):
+                continue
+            candidates.append(
+                (clean_text(option.get("publisher")).lower(), option.get("apply_link"))
+            )
+    candidates.append(
+        (
+            clean_text(record.get("job_publisher")).lower(),
+            record.get("job_apply_link"),
+        )
+    )
+    prioritized = [candidate for candidate in candidates if provider in candidate[0]]
+    prioritized.extend(candidate for candidate in candidates if candidate not in prioritized)
+    for _publisher, candidate_url in prioritized:
+        canonical, listing_id = canonical_platform_url(candidate_url, provider)
+        if canonical:
+            return canonical, listing_id
+    return None, None
+
+
+def jsearch_record(
+    record: dict[str, Any], fallback_country: str, provider: str
+) -> dict[str, Any] | None:
+    source_url, listing_id = jsearch_platform_url(record, provider)
+    if not source_url:
+        return None
+    posted_value: Any = record.get("job_posted_at_datetime_utc")
+    if not clean_scalar(posted_value):
+        timestamp = number(record.get("job_posted_at_timestamp"))
+        if timestamp is not None:
+            posted_value = datetime.fromtimestamp(timestamp, timezone.utc)
+    mapped = {
+        "id": listing_id or record.get("job_id"),
+        "title": record.get("job_title"),
+        "company": record.get("employer_name"),
+        "company_url": record.get("employer_website"),
+        "description": record.get("job_description"),
+        "location": record.get("job_location"),
+        "city": record.get("job_city"),
+        "state": record.get("job_state"),
+        "country": record.get("job_country") or fallback_country,
+        "is_remote": record.get("job_is_remote"),
+        "job_type": record.get("job_employment_type"),
+        "min_amount": record.get("job_min_salary"),
+        "max_amount": record.get("job_max_salary"),
+        "currency": record.get("job_salary_currency")
+        or ("CAD" if fallback_country == "Canada" else "USD"),
+        "interval": record.get("job_salary_period"),
+        "salary_source": "JSearch employer-provided or indexed salary fields",
+        "date_posted": posted_value,
+        "job_url": source_url,
+        "job_url_direct": record.get("job_apply_link"),
+    }
+    return row_to_job(mapped, fallback_country, provider)
+
+
+def collect_jsearch_jobs(
+    provider: str,
+) -> tuple[list[dict[str, Any]], int, int, list[str]]:
+    api_key = os.environ.get("OPENWEBNINJA_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "OPENWEBNINJA_API_KEY is required for external "
+            + provider
+            + " discovery."
+        )
+    by_url: dict[str, dict[str, Any]] = {}
+    collection_time = datetime.now(timezone.utc)
+    searches_performed = 0
+    searches_succeeded = 0
+    errors: list[str] = []
+    query_titles = (
+        '"marketing manager" OR "growth marketing manager" OR '
+        '"content marketing manager" OR "communications manager" OR '
+        '"brand marketing manager"'
+    )
+    for country_code, country_name in COUNTRIES:
+        searches_performed += 1
+        query = query_titles + " in " + country_name + " via " + provider
+        request_url = JSEARCH_API_URL + "?" + urlencode(
+            {
+                "query": query,
+                "country": JSEARCH_COUNTRY_CODES[country_code],
+                "language": "en",
+                "date_posted": "week",
+                "work_from_home": "true",
+            }
+        )
+        request = Request(
+            request_url,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "Job-Lobster-GitHub-Collector/1.0",
+                "x-api-key": api_key,
+            },
+        )
+        try:
+            with urlopen(request, timeout=90) as response:
+                payload = json.loads(response.read(5_000_000))
+            if not isinstance(payload, dict) or payload.get("status") != "OK":
+                raise RuntimeError("JSearch returned a non-OK response.")
+            raw_rows = payload.get("data")
+            if not isinstance(raw_rows, list):
+                raise RuntimeError("JSearch response did not contain a job list.")
+            searches_succeeded += 1
+            accepted_before = len(by_url)
+            for raw_record in raw_rows:
+                if not isinstance(raw_record, dict):
+                    continue
+                job = jsearch_record(raw_record, country_name, provider)
+                if job and is_fresh_posting(job["postedAt"], collection_time):
+                    by_url[job["sourceUrl"]] = job
+            print(
+                json.dumps(
+                    {
+                        "message": "jsearch_platform_search_complete",
+                        "provider": provider,
+                        "country": country_name,
+                        "rows": len(raw_rows),
+                        "qualified_in_search": len(by_url) - accepted_before,
+                        "qualified_for_ingestion": len(by_url),
+                    }
+                )
+            )
+        except Exception as error:
+            message = (
+                provider
+                + "/"
+                + country_name
+                + ": "
+                + type(error).__name__
+                + ": "
+                + str(error)
+            )
+            errors.append(clean_text(message, 500))
+            print(
+                json.dumps(
+                    {
+                        "message": "jsearch_platform_search_failed",
+                        "provider": provider,
+                        "error": message,
+                    }
+                ),
+                file=sys.stderr,
+            )
+        time.sleep(1)
+    return list(by_url.values()), searches_performed, searches_succeeded, errors[:20]
+
+
 def collect_jobs(provider: str) -> tuple[list[dict[str, Any]], int, int, list[str]]:
-    if provider == "glassdoor":
-        configure_glassdoor_compatibility()
+    if provider in {"linkedin", "glassdoor"}:
+        return collect_jsearch_jobs(provider)
     by_url: dict[str, dict[str, Any]] = {}
     collection_time = datetime.now(timezone.utc)
     searches_performed = 0
@@ -348,20 +466,9 @@ def collect_jobs(provider: str) -> tuple[list[dict[str, Any]], int, int, list[st
                     description_format="markdown",
                     enforce_annual_salary=False,
                     verbose=1,
-                    user_agent=(
-                        GLASSDOOR_USER_AGENT if provider == "glassdoor" else None
-                    ),
                 )
                 row_count = len(frame)
-                if row_count > 0 or provider != "glassdoor":
-                    searches_succeeded += 1
-                else:
-                    errors.append(
-                        provider
-                        + "/"
-                        + country_name
-                        + ": provider returned no rows; check provider logs for blocking"
-                    )
+                searches_succeeded += 1
                 for raw_record in frame.to_dict(orient="records"):
                     job = row_to_job(raw_record, country_name, provider)
                     if job and is_fresh_posting(job["postedAt"], collection_time):

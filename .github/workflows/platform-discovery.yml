@@ -30,6 +30,7 @@ jobs:
       matrix:
         provider:
           - indeed
+          - linkedin
           - glassdoor
     steps:
       - name: Check out the collector
@@ -48,5 +49,6 @@ jobs:
       - name: Search ${{ matrix.provider }} and ingest current jobs
         env:
           JOB_LOBSTER_INGEST_URL: https://job-lobster.awcarr97.workers.dev/api/v1/ingest/platform-jobs
+          OPENWEBNINJA_API_KEY: ${{ secrets.OPENWEBNINJA_API_KEY }}
           PYTHONUNBUFFERED: "1"
         run: python scripts/fetch_platform_jobs.py --provider "${{ matrix.provider }}"
