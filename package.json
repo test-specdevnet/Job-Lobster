@@ -1,0 +1,38 @@
+{
+  "name": "job-lobster",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --pretty false",
+    "worker:types": "wrangler types",
+    "worker:check": "wrangler deploy --dry-run",
+    "worker:dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply job-lobster --local",
+    "db:migrate:remote": "wrangler d1 migrations apply job-lobster --remote",
+    "db:seed:local": "wrangler d1 execute job-lobster --local --file=./seed.sql",
+    "db:seed:remote": "wrangler d1 execute job-lobster --remote --file=./seed.sql"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "agents": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/node": "^26.2.0",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest",
+    "vitest": "latest",
+    "wrangler": "latest"
+  }
+}

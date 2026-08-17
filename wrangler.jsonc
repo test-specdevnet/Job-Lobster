@@ -1,0 +1,54 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "job-lobster",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "JOB_LOBSTER_DB",
+      "database_name": "job-lobster",
+      "database_id": "29f6b69c-c5d7-4619-86fb-413245ee7abb",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "JOB_DISCOVERY_AGENT",
+        "class_name": "JobDiscoveryAgent"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["JobDiscoveryAgent"]
+    }
+  ],
+  "triggers": {
+    "crons": ["7,37 * * * *"]
+  },
+  "vars": {
+    "ALLOWED_ORIGINS": "https://job-lobster-globe.pages.dev,http://localhost:5174,http://127.0.0.1:5174",
+    "AGENT_INSTANCE_NAME": "production",
+    "TITLE_AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "head_sampling_rate": 1
+    }
+  }
+}

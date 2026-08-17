@@ -1,0 +1,38 @@
+import type { AtsSource } from "./types";
+
+// Public employer job boards. Tokens are the final path component of each
+// employer's hosted ATS board, not credentials.
+export const ATS_SOURCES: readonly AtsSource[] = [
+  { id: "ashby-revenuecat", name: "RevenueCat", provider: "ashby", token: "revenuecat", website: "https://www.revenuecat.com" },
+  { id: "ashby-kit", name: "Kit", provider: "ashby", token: "kit", website: "https://kit.com" },
+  { id: "ashby-givebutter", name: "Givebutter", provider: "ashby", token: "givebutter", website: "https://givebutter.com" },
+  { id: "ashby-archy", name: "Archy", provider: "ashby", token: "Archy", website: "https://www.archy.com" },
+  { id: "ashby-somethings", name: "Somethings", provider: "ashby", token: "somethings" },
+  { id: "ashby-infracost", name: "Infracost", provider: "ashby", token: "infracost", website: "https://www.infracost.io" },
+  { id: "ashby-builder-prime", name: "Builder Prime", provider: "ashby", token: "builder-prime", website: "https://www.builderprime.com" },
+  { id: "ashby-viz-ai", name: "Viz.ai", provider: "ashby", token: "Viz.ai", website: "https://www.viz.ai" },
+  { id: "ashby-prompt", name: "Prompt", provider: "ashby", token: "prompt" },
+  { id: "ashby-coder", name: "Coder", provider: "ashby", token: "coder", website: "https://coder.com" },
+  { id: "ashby-gc-ai", name: "GC AI", provider: "ashby", token: "gc-ai", website: "https://gc.ai" },
+  { id: "ashby-goody", name: "Goody", provider: "ashby", token: "goody", website: "https://www.ongoody.com" },
+  { id: "ashby-highlightta", name: "Zipline", provider: "ashby", token: "highlightta", website: "https://getzipline.com" },
+  { id: "ashby-jordan-digital", name: "Jordan Digital Marketing", provider: "ashby", token: "jordandigitalmarketing" },
+  { id: "ashby-cloudzero", name: "CloudZero", provider: "ashby", token: "CloudZero", website: "https://www.cloudzero.com" },
+  { id: "ashby-counsel", name: "Counsel Health", provider: "ashby", token: "counsel" },
+  { id: "ashby-airwallex", name: "Airwallex", provider: "ashby", token: "airwallex", website: "https://www.airwallex.com" },
+  { id: "ashby-socure", name: "Socure", provider: "ashby", token: "socure", website: "https://www.socure.com" },
+  { id: "greenhouse-workleap", name: "Workleap", provider: "greenhouse", token: "workleap", website: "https://workleap.com" },
+  { id: "greenhouse-wayvia", name: "Wayvia", provider: "greenhouse", token: "wayvia" },
+  { id: "greenhouse-cresta", name: "Cresta", provider: "greenhouse", token: "cresta", website: "https://cresta.com" },
+  { id: "greenhouse-maxwell", name: "Maxwell", provider: "greenhouse", token: "maxwell" },
+  { id: "greenhouse-anthropic", name: "Anthropic", provider: "greenhouse", token: "anthropic", website: "https://www.anthropic.com" },
+  { id: "greenhouse-commvault", name: "Commvault", provider: "greenhouse", token: "commvault", website: "https://www.commvault.com" },
+  { id: "greenhouse-fsastore", name: "Health-E Commerce", provider: "greenhouse", token: "fsastorecom" },
+  { id: "greenhouse-xapo", name: "Xapo Bank", provider: "greenhouse", token: "xapo61", website: "https://www.xapobank.com" },
+  { id: "greenhouse-quip", name: "quip", provider: "greenhouse", token: "quip", website: "https://www.getquip.com" },
+  { id: "greenhouse-honeycomb", name: "Honeycomb", provider: "greenhouse", token: "honeycomb", website: "https://www.honeycomb.io" },
+  { id: "greenhouse-prolific", name: "Prolific", provider: "greenhouse", token: "prolific", website: "https://www.prolific.com" },
+  { id: "greenhouse-figma", name: "Figma", provider: "greenhouse", token: "figma", website: "https://www.figma.com" },
+  { id: "greenhouse-webflow", name: "Webflow", provider: "greenhouse", token: "webflow", website: "https://webflow.com" },
+  { id: "greenhouse-cloudflare", name: "Cloudflare", provider: "greenhouse", token: "cloudflare", website: "https://www.cloudflare.com" },
+];

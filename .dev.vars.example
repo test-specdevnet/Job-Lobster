@@ -1,0 +1,4 @@
+ALLOWED_ORIGINS=http://localhost:5174,http://127.0.0.1:5174,https://job-lobster-globe.pages.dev
+AGENT_INSTANCE_NAME=local
+TITLE_AI_MODEL=@cf/meta/llama-3.1-8b-instruct-fast
+MANUAL_RUN_TOKEN=replace-with-a-long-random-token
