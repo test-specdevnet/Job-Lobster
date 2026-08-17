@@ -12,7 +12,7 @@ It is an autonomous job-discovery agent, not an application-submission bot. It f
 - Agent-owned deep scrape every 24 hours at 09:00 UTC
 - Agent-owned Cloudflare Web Search every 24 hours at 10:30 UTC across LinkedIn, Indeed, and Glassdoor public job results for remote US and Canadian marketing roles
 - A second Browser Run pass expands LinkedIn coverage without an authenticated LinkedIn session
-- A GitHub-hosted JobSpy collector searches public Indeed results at 10:05 UTC every day, then submits bounded batches to Job Lobster's common qualification pipeline
+- Independent GitHub-hosted JobSpy collectors search public Indeed and Glassdoor results at 10:05 UTC every day, then submit bounded batches to Job Lobster's common qualification pipeline
 - Deep scrapes fan out into bounded 12-source invocations so the 188-board catalog stays within Worker request limits
 - Cloudflare D1 for jobs, discoveries, sources, ingestion runs, and exchange-rate cache
 - Public Ashby, Greenhouse, and Lever adapters with bounded concurrency, timeouts, retries, and source cooldowns
@@ -21,7 +21,7 @@ It is an autonomous job-discovery agent, not an application-submission bot. It f
 - Dedupe, 30-day expiry, rejection reasons, source health, and observability logs
 - No automated application submission and no authenticated-session, login-wall, or anti-bot bypass
 
-The catalog contains 188 verified employer ATS boards: 32 core boards refreshed frequently and 156 boards scanned by the daily deep cycle. A separate Cloudflare cycle searches public LinkedIn results for both the United States and Canada, with a Browser Run depth pass for LinkedIn. The scheduled GitHub-hosted collector handles Indeed because Indeed rejects Cloudflare data-center egress. External batches authenticate with a short-lived GitHub Actions OIDC token that is restricted to this repository, its immutable repository ID, the main branch, and the collector workflow. Web candidates must expose explicit posting-age evidence no older than seven days before they enter the common qualification pipeline.
+The catalog contains 188 verified employer ATS boards: 32 core boards refreshed frequently and 156 boards scanned by the daily deep cycle. A separate Cloudflare cycle searches public LinkedIn results for both the United States and Canada, with a Browser Run depth pass for LinkedIn. The scheduled GitHub-hosted collector handles Indeed and Glassdoor because those job boards can reject Cloudflare data-center egress. Its provider jobs run independently so a failure at one board cannot suppress the other board's collection. External batches authenticate with a short-lived GitHub Actions OIDC token that is restricted to this repository, its immutable repository ID, the main branch, and the collector workflow. Web candidates must expose explicit posting-age evidence no older than seven days before they enter the common qualification pipeline.
 
 ## Qualification policy
 
@@ -43,7 +43,7 @@ Change thresholds and allowed locations in `src/config/qualification.ts`. Do not
 
 The protected `POST /api/v1/agent/run` operator endpoint starts an on-demand pull when supplied with the Wrangler secret `MANUAL_RUN_TOKEN`. Optional `mode=core`, `mode=daily`, `mode=full`, or `mode=web` selects its scope. It is not called by Job Globe.
 
-`POST /api/v1/ingest/platform-jobs` is reserved for the scheduled platform collector. It accepts only signed GitHub Actions OIDC identities from `.github/workflows/platform-discovery.yml` on this repository's main branch; it does not use a Google login, stored LinkedIn session, or long-lived GitHub/Cloudflare credential.
+`POST /api/v1/ingest/platform-jobs` is reserved for the scheduled Indeed and Glassdoor collector. It accepts only signed GitHub Actions OIDC identities from `.github/workflows/platform-discovery.yml` on this repository's main branch; it does not use a Google login, stored job-board session, or long-lived GitHub/Cloudflare credential.
 
 ## Local development
 
@@ -67,7 +67,7 @@ npm run worker:check
 
 ## Cloudflare deployment
 
-The committed `wrangler.jsonc` contains the production D1, Agents SDK Durable Object, Workers AI, Web Search, Browser Run, static-assets, and observability bindings. Recurring Worker jobs are persisted inside the agent's SQLite-backed scheduler. The Indeed collector is scheduled independently by GitHub Actions so its requests originate outside Cloudflare's blocked data-center egress. For a fresh Cloudflare account, create a D1 database and replace its ID before migrating. Cloudflare Web Search is an experimental account entitlement; when it is unavailable the run records `account_disabled` per source and the independent LinkedIn Browser Run continues.
+The committed `wrangler.jsonc` contains the production D1, Agents SDK Durable Object, Workers AI, Web Search, Browser Run, static-assets, and observability bindings. Recurring Worker jobs are persisted inside the agent's SQLite-backed scheduler. The Indeed and Glassdoor collectors are scheduled independently by GitHub Actions so their requests originate outside Cloudflare's blocked data-center egress. For a fresh Cloudflare account, create a D1 database and replace its ID before migrating. Cloudflare Web Search is an experimental account entitlement; when it is unavailable the run records `account_disabled` per source and the independent LinkedIn Browser Run continues.
 
 ```bash
 npm run db:migrate:remote

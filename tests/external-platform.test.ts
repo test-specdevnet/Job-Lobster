@@ -6,7 +6,7 @@ import {
 
 const now = new Date("2026-08-17T12:00:00.000Z");
 
-function job() {
+function job(provider: "indeed" | "glassdoor" = "indeed") {
   return {
     externalId: "abc123",
     title: "Growth Marketing Manager",
@@ -26,15 +26,17 @@ function job() {
       evidence: "Employer salary",
     },
     postedAt: "2026-08-16T12:00:00.000Z",
-    sourceUrl: "https://ca.indeed.com/viewjob?jk=abc123",
+    sourceUrl: provider === "glassdoor"
+      ? "https://www.glassdoor.ca/job-listing/growth-marketing-manager-example-JV_IC2281069_KO0,24_KE25,32.htm"
+      : "https://ca.indeed.com/viewjob?jk=abc123",
     applicationUrl: "https://jobs.example.com/apply/abc123",
     industry: "Marketing",
   };
 }
 
-function payload() {
+function payload(provider: "indeed" | "glassdoor" = "indeed") {
   return {
-    provider: "indeed",
+    provider,
     collector: "github-actions-jobspy/1.1.82",
     collectedAt: now.toISOString(),
     batchIndex: 0,
@@ -42,7 +44,7 @@ function payload() {
     searchesPerformed: 8,
     searchesSucceeded: 8,
     errors: [],
-    jobs: [job()],
+    jobs: [job(provider)],
   };
 }
 
@@ -55,6 +57,16 @@ describe("external platform ingestion payload", () => {
       sourceId: "web-indeed",
       title: "Growth Marketing Manager",
       workType: "remote",
+    });
+  });
+
+  it("maps a fresh Glassdoor batch to the configured source", () => {
+    const parsed = parseExternalPlatformBatch(payload("glassdoor"), now);
+    expect(parsed.source.id).toBe("web-glassdoor");
+    expect(parsed.jobs[0]).toMatchObject({
+      provider: "glassdoor",
+      sourceId: "web-glassdoor",
+      title: "Growth Marketing Manager",
     });
   });
 

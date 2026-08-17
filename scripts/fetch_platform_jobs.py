@@ -1,7 +1,8 @@
-"""Collect fresh Indeed jobs on a GitHub-hosted runner and ingest them into Job Lobster."""
+"""Collect fresh external job-board results and ingest them into Job Lobster."""
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import math
@@ -21,14 +22,26 @@ from jobspy import scrape_jobs
 AUDIENCE = "job-lobster-platform-ingest"
 COLLECTOR = "github-actions-jobspy/1.1.82"
 MAX_BATCH_SIZE = 100
-RESULTS_WANTED = 125
 HOURS_OLD = 168
-SEARCH_TERMS = (
-    '"marketing manager" remote -product -intern -sales',
-    '("growth marketing manager" OR "digital marketing manager") remote -product',
-    '("content marketing manager" OR "communications manager") remote -product',
-    '("brand marketing manager" OR "marketing lead" OR "head of content") remote -product',
-)
+SUPPORTED_PROVIDERS = ("indeed", "glassdoor")
+RESULTS_WANTED = {
+    "indeed": 125,
+    "glassdoor": 100,
+}
+SEARCH_TERMS = {
+    "indeed": (
+        '"marketing manager" remote -product -intern -sales',
+        '("growth marketing manager" OR "digital marketing manager") remote -product',
+        '("content marketing manager" OR "communications manager") remote -product',
+        '("brand marketing manager" OR "marketing lead" OR "head of content") remote -product',
+    ),
+    "glassdoor": (
+        "marketing manager",
+        "digital marketing manager",
+        "content marketing manager",
+        "marketing lead",
+    ),
+}
 COUNTRIES = (
     ("USA", "United States"),
     ("Canada", "Canada"),
@@ -89,20 +102,54 @@ def https_url(value: Any) -> str | None:
     return raw
 
 
-def canonical_indeed_url(value: Any) -> tuple[str | None, str | None]:
+def canonical_platform_url(
+    value: Any, provider: str
+) -> tuple[str | None, str | None]:
     raw = https_url(value)
     if not raw:
         return None, None
     parsed = urlparse(raw)
     hostname = (parsed.hostname or "").lower()
-    if hostname != "indeed.com" and not hostname.endswith(".indeed.com"):
+    query = parse_qs(parsed.query)
+    if provider == "indeed":
+        if hostname != "indeed.com" and not hostname.endswith(".indeed.com"):
+            return None, None
+        job_key = query.get("jk", [None])[0]
+        if job_key:
+            canonical = urlunparse(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    "/viewjob",
+                    "",
+                    urlencode({"jk": job_key}),
+                    "",
+                )
+            )
+            return canonical, job_key
+        return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", "")), None
+
+    glassdoor_host = (
+        hostname == "glassdoor.com"
+        or hostname.endswith(".glassdoor.com")
+        or hostname == "glassdoor.ca"
+        or hostname.endswith(".glassdoor.ca")
+    )
+    if provider != "glassdoor" or not glassdoor_host:
         return None, None
-    job_key = parse_qs(parsed.query).get("jk", [None])[0]
-    if job_key:
+    listing_id = query.get("jl", [None])[0]
+    if listing_id:
         canonical = urlunparse(
-            (parsed.scheme, parsed.netloc, "/viewjob", "", urlencode({"jk": job_key}), "")
+            (
+                parsed.scheme,
+                parsed.netloc,
+                "/job-listing/j",
+                "",
+                urlencode({"jl": listing_id}),
+                "",
+            )
         )
-        return canonical, job_key
+        return canonical, listing_id
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", "")), None
 
 
@@ -179,11 +226,13 @@ def salary(record: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def row_to_job(record: dict[str, Any], fallback_country: str) -> dict[str, Any] | None:
+def row_to_job(
+    record: dict[str, Any], fallback_country: str, provider: str
+) -> dict[str, Any] | None:
     title = clean_text(record.get("title"), 300)
     if not title or not TARGET_TITLE.search(title) or EXCLUDED_TITLE.search(title):
         return None
-    source_url, job_key = canonical_indeed_url(record.get("job_url"))
+    source_url, job_key = canonical_platform_url(record.get("job_url"), provider)
     date_posted = posted_at(record.get("date_posted"))
     if not source_url or not date_posted:
         return None
@@ -231,21 +280,22 @@ def row_to_job(record: dict[str, Any], fallback_country: str) -> dict[str, Any] 
     }
 
 
-def collect_jobs() -> tuple[list[dict[str, Any]], int, int, list[str]]:
+def collect_jobs(provider: str) -> tuple[list[dict[str, Any]], int, int, list[str]]:
     by_url: dict[str, dict[str, Any]] = {}
     collection_time = datetime.now(timezone.utc)
     searches_performed = 0
     searches_succeeded = 0
     errors: list[str] = []
     for country_code, country_name in COUNTRIES:
-        for search_term in SEARCH_TERMS:
+        for search_term in SEARCH_TERMS[provider]:
             searches_performed += 1
             try:
                 frame = scrape_jobs(
-                    site_name="indeed",
+                    site_name=provider,
                     search_term=search_term,
                     location=country_name,
-                    results_wanted=RESULTS_WANTED,
+                    is_remote=provider == "glassdoor",
+                    results_wanted=RESULTS_WANTED[provider],
                     hours_old=HOURS_OLD,
                     country_indeed=country_code,
                     description_format="markdown",
@@ -254,13 +304,14 @@ def collect_jobs() -> tuple[list[dict[str, Any]], int, int, list[str]]:
                 )
                 searches_succeeded += 1
                 for raw_record in frame.to_dict(orient="records"):
-                    job = row_to_job(raw_record, country_name)
+                    job = row_to_job(raw_record, country_name, provider)
                     if job and is_fresh_posting(job["postedAt"], collection_time):
                         by_url[job["sourceUrl"]] = job
                 print(
                     json.dumps(
                         {
-                            "message": "indeed_search_complete",
+                            "message": "platform_search_complete",
+                            "provider": provider,
                             "country": country_name,
                             "rows": len(frame),
                             "qualified_for_ingestion": len(by_url),
@@ -268,9 +319,26 @@ def collect_jobs() -> tuple[list[dict[str, Any]], int, int, list[str]]:
                     )
                 )
             except Exception as error:  # JobSpy raises provider-specific exceptions.
-                message = country_name + ": " + type(error).__name__ + ": " + str(error)
+                message = (
+                    provider
+                    + "/"
+                    + country_name
+                    + ": "
+                    + type(error).__name__
+                    + ": "
+                    + str(error)
+                )
                 errors.append(clean_text(message, 500))
-                print(json.dumps({"message": "indeed_search_failed", "error": message}), file=sys.stderr)
+                print(
+                    json.dumps(
+                        {
+                            "message": "platform_search_failed",
+                            "provider": provider,
+                            "error": message,
+                        }
+                    ),
+                    file=sys.stderr,
+                )
             time.sleep(2)
     return list(by_url.values()), searches_performed, searches_succeeded, errors[:20]
 
@@ -330,14 +398,25 @@ def post_batch(endpoint: str, token: str, payload: dict[str, Any]) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Collect one public job platform and ingest it into Job Lobster."
+    )
+    parser.add_argument("--provider", choices=SUPPORTED_PROVIDERS, required=True)
+    args = parser.parse_args()
+    provider = args.provider
     endpoint = os.environ.get(
         "JOB_LOBSTER_INGEST_URL",
         "https://job-lobster.awcarr97.workers.dev/api/v1/ingest/platform-jobs",
     )
-    jobs, searches_performed, searches_succeeded, errors = collect_jobs()
+    jobs, searches_performed, searches_succeeded, errors = collect_jobs(provider)
     if searches_succeeded == 0:
-        raise RuntimeError("Every Indeed search failed; no ingestion was attempted.")
-    batches = [jobs[index : index + MAX_BATCH_SIZE] for index in range(0, len(jobs), MAX_BATCH_SIZE)]
+        raise RuntimeError(
+            "Every " + provider + " search failed; no ingestion was attempted."
+        )
+    batches = [
+        jobs[index : index + MAX_BATCH_SIZE]
+        for index in range(0, len(jobs), MAX_BATCH_SIZE)
+    ]
     if not batches:
         batches = [[]]
     collected_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -347,7 +426,7 @@ def main() -> None:
             endpoint,
             token,
             {
-                "provider": "indeed",
+                "provider": provider,
                 "collector": COLLECTOR,
                 "collectedAt": collected_at,
                 "batchIndex": batch_index,
@@ -361,7 +440,8 @@ def main() -> None:
     print(
         json.dumps(
             {
-                "message": "indeed_collection_complete",
+                "message": "platform_collection_complete",
+                "provider": provider,
                 "jobs": len(jobs),
                 "batches": len(batches),
                 "searches_succeeded": searches_succeeded,

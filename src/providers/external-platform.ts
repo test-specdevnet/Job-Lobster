@@ -7,7 +7,7 @@ import type {
 } from "./types";
 import { WEB_SEARCH_SOURCES } from "./web-search";
 
-export type ExternalPlatformProvider = Extract<WebSearchProvider, "indeed" | "linkedin">;
+export type ExternalPlatformProvider = Extract<WebSearchProvider, "indeed" | "linkedin" | "glassdoor">;
 
 export const EXTERNAL_INGEST_MAX_JOBS = 100;
 export const EXTERNAL_INGEST_MAX_BYTES = 2_000_000;
@@ -90,7 +90,13 @@ function providerOwnsUrl(provider: ExternalPlatformProvider, url: URL): boolean 
   if (provider === "indeed") {
     return hostname === "indeed.com" || hostname.endsWith(".indeed.com");
   }
-  return hostname === "linkedin.com" || hostname.endsWith(".linkedin.com");
+  if (provider === "linkedin") {
+    return hostname === "linkedin.com" || hostname.endsWith(".linkedin.com");
+  }
+  return hostname === "glassdoor.com"
+    || hostname.endsWith(".glassdoor.com")
+    || hostname === "glassdoor.ca"
+    || hostname.endsWith(".glassdoor.ca");
 }
 
 function isoDate(value: unknown, label: string): string {
@@ -210,8 +216,8 @@ function parseJob(
 export function parseExternalPlatformBatch(value: unknown, now = new Date()): ExternalPlatformBatch {
   const input = record(value, "payload");
   const provider = boundedString(input.provider, "provider", 16);
-  if (provider !== "indeed" && provider !== "linkedin") {
-    throw new ExternalPayloadError("provider must be indeed or linkedin.");
+  if (provider !== "indeed" && provider !== "linkedin" && provider !== "glassdoor") {
+    throw new ExternalPayloadError("provider must be indeed, linkedin, or glassdoor.");
   }
   const source = WEB_SEARCH_SOURCES.find((candidate) => candidate.provider === provider);
   if (!source) throw new ExternalPayloadError("provider source is not configured.");
