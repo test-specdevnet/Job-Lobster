@@ -71,9 +71,13 @@ const verticalFallbackRules: Array<[TargetTitle, RegExp[]]> = [
     /\b(?:head|director|lead)\s+(?:of\s+)?(?:demand generation|demand gen|lifecycle|acquisition|performance|field|partner|channel|campaign|event)\s+marketing\b/,
     /\bgrowth\s+marketing\s+(?:lead|director|specialist|strategist)\b/,
     /\b(?:senior\s+)?paid\s+media\s+(?:manager|lead|director|specialist|strategist)\b/,
+    /\b(?:senior\s+)?paid\s+social\s+(?:manager|lead|director|specialist|strategist)\b/,
   ]],
   ["SEO Manager", [/\bseo\s+(?:lead|director|specialist|strategist)\b/, /\bsearch engine optimization\s+(?:lead|specialist|strategist)\b/]],
-  ["Marketing Communications Manager", [/\b(?:communications|comms)\s+(?:manager|lead|director|strategist|specialist)\b/]],
+  ["Marketing Communications Manager", [
+    /\b(?:communications|comms)\s+(?:manager|lead|director|strategist|specialist)\b/,
+    /\b(?:manager|lead|director|strategist|specialist)\b.*\b(?:communications|comms)\b/,
+  ]],
   ["Content Marketing Specialist", [/\bcontent\s+(?:writer|editor|producer|specialist)\b/, /\bcontent\s+marketing\s+(?:writer|editor|producer|strategist)\b/]],
   ["Content Manager", [
     /\b(?:social media|editorial|creative content)\s+(?:manager|lead|director|strategist|specialist)\b/,
@@ -119,7 +123,7 @@ export function normalizeTitle(originalTitle: string): TargetTitle | null {
 export function isRelevantMarketingTitle(originalTitle: string) {
   const title = canonicalize(originalTitle);
   if (!title || excludedRolePatterns.some((pattern) => pattern.test(title))) return false;
-  return /\bmarketing\b|\bcontent\b|\bseo\b|\bgrowth\b|\bcommunications?\b|\bcomms\b|\bbrand\b|\bmedia\b|\bdemand gen(?:eration)?\b|\blifecycle\b|\bacquisition\b/.test(title);
+  return /\bmarketing\b|\bcontent\b|\bseo\b|\bgrowth\b|\bcommunications?\b|\bcomms\b|\bbrand\b|\bmedia\b|\bsocial\b|\bdemand gen(?:eration)?\b|\blifecycle\b|\bacquisition\b/.test(title);
 }
 
 export function isTargetTitle(value: string): value is TargetTitle {

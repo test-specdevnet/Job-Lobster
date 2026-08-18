@@ -45,5 +45,8 @@ describe("live-feed normalization", () => {
     expect(normalizeTitle("Manager of SEO")).toBe("SEO Manager");
     expect(isRelevantMarketingTitle("Senior Paid Media Manager")).toBe(true);
     expect(isRelevantMarketingTitle("Associate Director, Social Media (Remote US)")).toBe(true);
+    expect(normalizeTitle("Senior Paid Social Strategist")).toBe("Growth Marketing Manager");
+    expect(isRelevantMarketingTitle("Senior Paid Social Strategist")).toBe(true);
+    expect(normalizeTitle("Director of Philanthropic Development and Communications")).toBe("Marketing Communications Manager");
   });
 });
