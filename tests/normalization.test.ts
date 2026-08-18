@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTitle } from "../src/domain/title-normalizer";
+import { isRelevantMarketingTitle, normalizeTitle } from "../src/domain/title-normalizer";
 import { classifyWorkType, normalizeLocation } from "../src/providers/normalization/job-fields";
 import { normalizeRawSalary, parseEmployerSalary } from "../src/providers/normalization/salary";
 
@@ -43,5 +43,7 @@ describe("live-feed normalization", () => {
     expect(normalizeTitle("Sr. Director, Brand Strategy")).toBe("Brand Marketing Manager");
     expect(normalizeTitle("Associate Director, Social Media (Remote US)")).toBe("Content Manager");
     expect(normalizeTitle("Manager of SEO")).toBe("SEO Manager");
+    expect(isRelevantMarketingTitle("Senior Paid Media Manager")).toBe(true);
+    expect(isRelevantMarketingTitle("Associate Director, Social Media (Remote US)")).toBe(true);
   });
 });

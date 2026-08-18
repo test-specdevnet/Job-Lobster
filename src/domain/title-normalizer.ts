@@ -119,7 +119,7 @@ export function normalizeTitle(originalTitle: string): TargetTitle | null {
 export function isRelevantMarketingTitle(originalTitle: string) {
   const title = canonicalize(originalTitle);
   if (!title || excludedRolePatterns.some((pattern) => pattern.test(title))) return false;
-  return /\bmarketing\b|\bcontent\b|\bseo\b|\bgrowth\b|\bcommunications?\b|\bcomms\b|\bbrand\b|\bdemand gen(?:eration)?\b|\blifecycle\b|\bacquisition\b/.test(title);
+  return /\bmarketing\b|\bcontent\b|\bseo\b|\bgrowth\b|\bcommunications?\b|\bcomms\b|\bbrand\b|\bmedia\b|\bdemand gen(?:eration)?\b|\blifecycle\b|\bacquisition\b/.test(title);
 }
 
 export function isTargetTitle(value: string): value is TargetTitle {
