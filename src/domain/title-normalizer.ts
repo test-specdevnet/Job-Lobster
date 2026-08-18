@@ -58,10 +58,15 @@ const verticalFallbackRules: Array<[TargetTitle, RegExp[]]> = [
     /\bmarketing\s+(?:lead|director)\b/,
   ]],
   ["Brand Marketing Manager", [/\bbrand\s+(?:manager|lead|director|strategist|specialist)\b/]],
+  ["Brand Marketing Manager", [
+    /\bbrand\s+(?:partnerships?|strategy)\s+(?:manager|lead|director|strategist|specialist)\b/,
+    /\b(?:manager|lead|director|strategist|specialist)\b.*\bbrand\s+strategy\b/,
+  ]],
   ["Growth Marketing Manager", [
     /\b(?:demand generation|demand gen|lifecycle|acquisition|performance|field|partner|channel|campaign|event)\s+marketing\s+(?:manager|lead|director|specialist)\b/,
     /\b(?:head|director|lead)\s+(?:of\s+)?(?:demand generation|demand gen|lifecycle|acquisition|performance|field|partner|channel|campaign|event)\s+marketing\b/,
     /\bgrowth\s+marketing\s+(?:lead|director|specialist|strategist)\b/,
+    /\b(?:senior\s+)?paid\s+media\s+(?:manager|lead|director|specialist|strategist)\b/,
   ]],
   ["SEO Manager", [/\bseo\s+(?:lead|director|specialist|strategist)\b/, /\bsearch engine optimization\s+(?:lead|specialist|strategist)\b/]],
   ["Marketing Communications Manager", [/\b(?:communications|comms)\s+(?:manager|lead|director|strategist|specialist)\b/]],

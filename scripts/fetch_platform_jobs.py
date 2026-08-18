@@ -47,7 +47,7 @@ JSEARCH_COUNTRY_CODES = {
     "Canada": "ca",
 }
 TARGET_TITLE = re.compile(
-    r"\b(marketing|brand|content|communications?|growth|seo|geo)\b",
+    r"\b(marketing|brand|content|communications?|growth|media|seo|geo)\b",
     re.IGNORECASE,
 )
 EXCLUDED_TITLE = re.compile(
