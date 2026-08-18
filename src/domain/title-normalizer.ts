@@ -33,7 +33,11 @@ const titleRules: Array<[TargetTitle, RegExp[]]> = [
   ["Creative Marketing Manager", [/\bcreative\s+marketing\s+manager\b/]],
   ["Business Marketing Manager", [/\bbusiness\s+marketing\s+manager\b/]],
   ["Content Strategy Manager", [/\bcontent\s+strateg(?:y|ies)\s+manager\b/]],
-  ["SEO Manager", [/\bseo\s+manager\b/, /\bsearch engine optimization\s+manager\b/]],
+  ["SEO Manager", [
+    /\bseo\s+manager\b/,
+    /\bmanager\s+(?:of\s+)?seo\b/,
+    /\bsearch engine optimization\s+manager\b/,
+  ]],
   ["Digital Marketing Strategist", [/\bdigital\s+marketing\s+strategist\b/]],
   ["Growth Strategist", [/\bgrowth\s+strategist\b/]],
   ["Content Strategist", [/\bcontent\s+strategist\b/]],
@@ -71,7 +75,10 @@ const verticalFallbackRules: Array<[TargetTitle, RegExp[]]> = [
   ["SEO Manager", [/\bseo\s+(?:lead|director|specialist|strategist)\b/, /\bsearch engine optimization\s+(?:lead|specialist|strategist)\b/]],
   ["Marketing Communications Manager", [/\b(?:communications|comms)\s+(?:manager|lead|director|strategist|specialist)\b/]],
   ["Content Marketing Specialist", [/\bcontent\s+(?:writer|editor|producer|specialist)\b/, /\bcontent\s+marketing\s+(?:writer|editor|producer|strategist)\b/]],
-  ["Content Manager", [/\b(?:social media|editorial|creative content)\s+(?:manager|lead|strategist|specialist)\b/]],
+  ["Content Manager", [
+    /\b(?:social media|editorial|creative content)\s+(?:manager|lead|director|strategist|specialist)\b/,
+    /\b(?:manager|lead|director|strategist|specialist)\b.*\bsocial media\b/,
+  ]],
   ["Digital Marketing Specialist", [
     /\bmarketing\s+(?:specialist|coordinator|analyst|strategist|associate)\b/,
     /\bdigital\s+marketing\s+(?:lead|director|coordinator|analyst)\b/,
