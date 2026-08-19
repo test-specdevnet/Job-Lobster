@@ -36,6 +36,7 @@ const titleRules: Array<[TargetTitle, RegExp[]]> = [
   ["SEO Manager", [
     /\bseo\s+manager\b/,
     /\bmanager\s+(?:of\s+)?seo\b/,
+    /\bmanager[, -]+seo\b/,
     /\bsearch engine optimization\s+manager\b/,
   ]],
   ["Digital Marketing Strategist", [/\bdigital\s+marketing\s+strategist\b/]],
