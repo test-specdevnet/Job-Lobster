@@ -31,7 +31,7 @@ export function decodeHtml(value: string) {
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>|<\/li>|<\/h\d>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
-    .replace(/\u00a0/g, " ")
+    .replace(/&nbsp;|\u00a0/g, " ")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

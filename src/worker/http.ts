@@ -30,8 +30,8 @@ function allowedOrigin(request: Request, configuredOrigins: string) {
 export async function withApiHeaders(request: Request, env: Env, handler: () => Promise<Response>) {
   const origin = allowedOrigin(request, env.ALLOWED_ORIGINS);
   const headers = new Headers({
-    "access-control-allow-methods": "GET, OPTIONS",
-    "access-control-allow-headers": "Content-Type",
+    "access-control-allow-methods": "GET, PUT, POST, OPTIONS",
+    "access-control-allow-headers": "Content-Type, Authorization",
     "access-control-max-age": "86400",
     "x-content-type-options": "nosniff",
     "referrer-policy": "strict-origin-when-cross-origin",

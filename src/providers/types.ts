@@ -1,6 +1,6 @@
 import type { EmploymentType, WorkType } from "../domain/job";
 
-export type AtsProvider = "ashby" | "greenhouse" | "lever";
+export type AtsProvider = "ashby" | "greenhouse" | "lever" | "workable" | "smartrecruiters";
 export type WebSearchProvider = "linkedin" | "indeed" | "glassdoor";
 export type JobProvider = AtsProvider | WebSearchProvider;
 export type SourceScope = "core" | "daily";

@@ -4,6 +4,10 @@ import { classifyWorkType, normalizeLocation } from "../src/providers/normalizat
 import { normalizeRawSalary, parseEmployerSalary } from "../src/providers/normalization/salary";
 
 describe("live-feed normalization", () => {
+  it("does not interpret a Canadian country code as California", () => {
+    expect(normalizeLocation("Remote or Mississauga", { country: "CA" }, "remote", "PointClickCare")).toMatchObject({ city: "Mississauga", region: "Ontario", country: "Canada" });
+    expect(normalizeLocation("Remote", { country: "CA" }, "remote", "Example")).toMatchObject({ region: null, country: "Canada" });
+  });
   it("reads employer-provided annual salary ranges and infers Canadian dollars", () => {
     const salary = parseEmployerSalary(
       "Compensation: Base salary: $85K to $105K. Pay mix is 90% base.",
@@ -30,8 +34,8 @@ describe("live-feed normalization", () => {
     });
   });
 
-  it("does not drift into product marketing roles outside the configured taxonomy", () => {
-    expect(normalizeTitle("Senior Product Marketing Manager")).toBeNull();
+  it("includes product marketing in the candidate taxonomy", () => {
+    expect(normalizeTitle("Senior Product Marketing Manager")).toBe("Product Marketing Manager");
   });
 
   it("maps broader management-level roles inside the marketing vertical", () => {

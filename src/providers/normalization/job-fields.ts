@@ -16,6 +16,8 @@ const regionNames: Record<string, string> = {
 };
 
 const cityCoordinates: Array<[RegExp, number, number, string, string, string]> = [
+  [/\bmississauga\b/i, 43.589, -79.6441, "Mississauga", "Ontario", "Canada"],
+  [/\b(?:kitchener|waterloo)\b/i, 43.4643, -80.5204, "Kitchener-Waterloo", "Ontario", "Canada"],
   [/\btoronto\b/i, 43.6532, -79.3832, "Toronto", "Ontario", "Canada"],
   [/\bhamilton\b/i, 43.2557, -79.8711, "Hamilton", "Ontario", "Canada"],
   [/\bst\.? catharines\b/i, 43.1594, -79.2469, "St. Catharines", "Ontario", "Canada"],
@@ -147,7 +149,7 @@ export function normalizeLocation(
   let country = address?.country?.trim() || null;
   let region = address?.region?.trim() || null;
   let city = address?.city?.trim() || null;
-  const regionMatch = combined.match(/(?:,|\s)\b([A-Z]{2})\b/);
+  const regionMatch = `${address?.city ?? ""}, ${address?.region ?? ""}; ${locationText}`.match(/(?:,|\s)\b([A-Z]{2})\b/);
   if (!region && regionMatch?.[1] && regionNames[regionMatch[1]]) region = regionNames[regionMatch[1]];
 
   const countryEvidence = `${address?.country ?? ""}; ${combined}`;

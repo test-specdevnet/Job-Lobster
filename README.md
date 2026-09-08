@@ -1,3 +1,7 @@
+# First-to-Apply Radar
+
+The local revamp is documented in [RADAR.md](RADAR.md). Start the local backend with `npm run radar:dev` after `npm run db:migrate:local`.
+
 # Job Lobster
 
 Job Lobster is the production discovery, qualification, and API service behind Job Globe. It runs as a Cloudflare Worker at <https://job-lobster.awcarr97.workers.dev>, keeps durable agent state and schedules in the Agents SDK, and exposes only current jobs that pass the centralized qualification policy.

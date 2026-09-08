@@ -1,10 +1,11 @@
 import { QUALIFICATION_CONFIG, type TargetTitle } from "../config/qualification";
 
 const excludedRolePatterns = [
+  /\b(?:intern(?:ship)?|co[ -]?op|student)\b/,
+  /\b(?:account executive|talent acquisition|sales development)\b/,
   /\bsoftware\b/,
   /\bengineer(?:ing)?\b/,
   /\bproduct manager\b/,
-  /\bproduct marketing\b/,
   /\baccount manager\b/,
   /\bbusiness development\b/,
   /\bgraphic designer\b/,
@@ -17,6 +18,14 @@ const excludedRolePatterns = [
 ];
 
 const titleRules: Array<[TargetTitle, RegExp[]]> = [
+  ["Product Marketing Manager", [/\bproduct marketing.*(?:manager|lead|director)\b/]],
+  ["Product Marketing Specialist", [/\bproduct marketing\b/]],
+  ["Technical Content Strategist", [/\btechnical content\b/]],
+  ["Technical Marketing Manager", [/\btechnical marketing.*(?:manager|lead|director)\b/]],
+  ["Technical Marketing Specialist", [/\btechnical marketing\b/]],
+  ["Developer Marketing", [/\bdeveloper marketing\b/]],
+  ["Solutions Marketing", [/\bsolutions marketing\b/]],
+  ["Demand Generation Manager", [/\bdemand gen(?:eration)?\s*(?:program\s*)?(?:\/|&)?\s*(?:content marketing)?\s*manager\b/]],
   ["SEO & GEO Manager", [/\b(?:seo\s*(?:&|and|\+)\s*geo|geo\s*(?:&|and|\+)\s*seo)\s+manager\b/]],
   ["AI Marketing Manager", [/\bai\s+marketing\s+manager\b/, /\bmarketing\s+manager[, -]+ai\b/]],
   ["AI Marketing Specialist", [/\bai\s+marketing\s+specialist\b/]],

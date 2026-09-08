@@ -41,7 +41,7 @@ export const greenhouseAdapter: AtsAdapter = {
           eligibility: locationText || null,
           employmentType: normalizeEmploymentType(null, description),
           salary: null,
-          postedAt: job.first_published ?? job.updated_at ?? "",
+          postedAt: job.first_published ?? "",
           sourceUrl: job.absolute_url,
           applicationUrl: job.absolute_url,
           industry: job.departments?.[0]?.name ?? null,

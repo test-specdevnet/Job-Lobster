@@ -9,6 +9,8 @@ export const QUALIFICATION_CONFIG = {
   acceptGlobalOnsite: true,
   includeUnknownWorkType: true,
   targetTitles: [
+    "Product Marketing Manager", "Product Marketing Specialist", "Technical Content Strategist",
+    "Technical Marketing Manager", "Technical Marketing Specialist", "Developer Marketing", "Solutions Marketing", "Demand Generation Manager",
     "Marketing Manager",
     "Digital Marketing Manager",
     "Growth Marketing Manager",

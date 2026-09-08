@@ -1,3 +1,5 @@
+import { RADAR_WATCHLIST } from "../providers/watchlist";
+import { listRadar, savePipeline, listWatchlist } from "./radar";
 import { getAgentByName } from "agents";
 import { QUALIFICATION_CONFIG } from "../config/qualification";
 import {
@@ -14,7 +16,7 @@ import {
 } from "./github-oidc";
 import { jsonResponse, methodNotAllowed, serverError } from "./http";
 import { buildJobsQuery, JOB_SELECT, parseJobFilters, rowToPublicJob, type JobRow } from "./jobs";
-import { executeExternalPlatformIngestion } from "./pipeline";
+import { executeDiscoveryRun, executeExternalPlatformIngestion } from "./pipeline";
 
 async function listJobs(request: Request, env: Env) {
   if (request.method !== "GET") return methodNotAllowed();
@@ -236,6 +238,35 @@ export async function handleApi(request: Request, env: Env) {
     if (path === "/api/health" || path === "/api/v1/health") {
       if (request.method !== "GET") return methodNotAllowed();
       return jsonResponse({ status: "ok", service: "job-lobster", generatedAt: new Date().toISOString() }, { headers: { "cache-control": "no-store" } });
+    }
+    if (path === "/api/v1/radar/refresh") {
+      if (request.method !== "POST") return methodNotAllowed("POST");
+      const configured = Reflect.get(env, "MANUAL_RUN_TOKEN");
+      const token = request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
+      if (typeof configured !== "string" || !configured || !token || !await secretsMatch(configured, token)) return jsonResponse({ error: { message: "Operator authorization required." } }, { status: 401 });
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      if (!Number.isInteger(offset) || offset < 0 || offset >= RADAR_WATCHLIST.length) return jsonResponse({ error: { message: "Invalid watchlist offset." } }, { status: 400 });
+      const sources = RADAR_WATCHLIST.slice(offset, offset + 4);
+      const result = await executeDiscoveryRun(env, `radar_${crypto.randomUUID()}`, new Date(), "core", sources);
+      return jsonResponse({ data: result, nextOffset: offset + 4 < RADAR_WATCHLIST.length ? offset + 4 : null }, { headers: { "cache-control": "no-store" } });
+    }
+    if (path === "/api/v1/radar") {
+      // The loopback-only development config is intentionally frictionless.
+      // Deployed personal pipeline data requires the existing operator credential.
+      if (!(String(env.AGENT_INSTANCE_NAME) === "local-radar" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))) {
+        const configured = Reflect.get(env, "MANUAL_RUN_TOKEN");
+        const token = request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
+        if (typeof configured !== "string" || !configured || !token || !await secretsMatch(configured, token)) return jsonResponse({ error: { message: "Operator authorization required for the personal radar." } }, { status: 401 });
+      }
+      return listRadar(request, env);
+    }
+    if (path === "/api/v1/watchlist" && request.method === "GET") return listWatchlist(env);
+    const pipelineMatch = path.match(/^\/api\/v1\/pipeline\/([^/]+)$/);
+    if (pipelineMatch) {
+      const configured = Reflect.get(env, "MANUAL_RUN_TOKEN");
+      const token = request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
+      const authorized = typeof configured === "string" && Boolean(configured && token) && await secretsMatch(configured, token);
+      return savePipeline(request, env, decodeURIComponent(pipelineMatch[1]), authorized);
     }
     if (path === "/api/jobs" || path === "/api/v1/jobs") return listJobs(request, env);
     if (path === "/api/stats" || path === "/api/v1/stats") return getStats(request, env);

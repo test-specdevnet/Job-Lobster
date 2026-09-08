@@ -125,7 +125,7 @@ export function qualifyJob(
     return reject(normalizedTitle, "salary_below_threshold", ageHours);
   }
 
-  if (ageHours > QUALIFICATION_CONFIG.maximumJobAgeDays * 24) {
+  if (candidate.postedAt && ageHours > QUALIFICATION_CONFIG.maximumJobAgeDays * 24) {
     return reject(normalizedTitle, "posting_too_old", ageHours);
   }
 

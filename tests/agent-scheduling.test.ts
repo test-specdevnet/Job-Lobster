@@ -26,8 +26,8 @@ describe("autonomous discovery schedules", () => {
     ]);
   });
 
-  it("separates the 32-source core from the expanded validated daily catalog", () => {
-    expect(CORE_ATS_SOURCES).toHaveLength(32);
+  it("separates the 33-source core from the expanded validated daily catalog", () => {
+    expect(CORE_ATS_SOURCES).toHaveLength(33);
     expect(DAILY_ATS_SOURCES.length).toBeGreaterThanOrEqual(140);
     expect(ALL_ATS_SOURCES.length).toBeGreaterThanOrEqual(172);
     expect(sourcesForRun("core")).toBe(CORE_ATS_SOURCES);

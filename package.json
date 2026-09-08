@@ -17,7 +17,8 @@
     "db:migrate:local": "wrangler d1 migrations apply job-lobster --local",
     "db:migrate:remote": "wrangler d1 migrations apply job-lobster --remote",
     "db:seed:local": "wrangler d1 execute job-lobster --local --file=./seed.sql",
-    "db:seed:remote": "wrangler d1 execute job-lobster --remote --file=./seed.sql"
+    "db:seed:remote": "wrangler d1 execute job-lobster --remote --file=./seed.sql",
+    "radar:dev": "npm run build && wrangler dev --config wrangler.local.json --local --ip 127.0.0.1 --port 8787"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

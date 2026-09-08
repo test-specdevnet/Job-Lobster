@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts", "tests"]
+  "include": ["vite.config.ts", "tests", "worker-configuration.d.ts"]
 }

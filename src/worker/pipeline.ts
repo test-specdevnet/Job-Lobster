@@ -1,3 +1,4 @@
+import { canonicalApplyUrl } from "../domain/radar";
 import { QUALIFICATION_CONFIG, type TargetTitle } from "../config/qualification";
 import { qualifyJob } from "../domain/qualification";
 import type { JobLocation, SalaryStatus } from "../domain/job";
@@ -42,7 +43,7 @@ async function sha256(value: string) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function cleanKey(value: string | null | undefined) {
+export function cleanKey(value: string | null | undefined) {
   return (value ?? "")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -52,13 +53,13 @@ function cleanKey(value: string | null | undefined) {
 }
 
 async function classifyTitleWithAi(env: Env, job: RawAtsJob): Promise<TargetTitle | null> {
-  if (!relevantTitle(job.title) || /\bproduct marketing\b/i.test(job.title)) return null;
+  if (!env.AI || !relevantTitle(job.title)) return null;
   try {
     const result = await env.AI.run(env.TITLE_AI_MODEL, {
       messages: [
         {
           role: "system",
-          content: `Classify a job title into exactly one allowed category, or null. Allowed categories: ${QUALIFICATION_CONFIG.targetTitles.join(", ")}. Exclude product marketing, sales, account management, engineering, public affairs, design, internships, and unrelated roles. Return JSON only: {"category":"..."} or {"category":null}.`,
+          content: `Classify a job title into exactly one allowed category, or null. Allowed categories: ${QUALIFICATION_CONFIG.targetTitles.join(", ")}. Exclude sales, account management, engineering, public affairs, design, internships, and unrelated roles. Return JSON only: {"category":"..."} or {"category":null}.`,
         },
         { role: "user", content: `Title: ${job.title}\nDepartment: ${job.industry ?? "unknown"}` },
       ],
@@ -165,7 +166,7 @@ function salaryFor(
   };
 }
 
-async function storeCandidate(
+export async function storeCandidate(
   env: Env,
   runId: string,
   job: RawAtsJob,
@@ -175,7 +176,7 @@ async function storeCandidate(
   stats: DiscoveryRunStats,
 ) {
   let normalizedTitle = normalizeTitle(job.title);
-  if (!normalizedTitle && relevantTitle(job.title) && !/\bproduct marketing\b/i.test(job.title) && aiBudget.remaining > 0) {
+  if (!normalizedTitle && relevantTitle(job.title) && aiBudget.remaining > 0) {
     aiBudget.remaining -= 1;
     normalizedTitle = await classifyTitleWithAi(env, job);
   }
@@ -193,13 +194,25 @@ async function storeCandidate(
   }, now, normalizedTitle);
   stats.jobsNormalized += 1;
 
-  const dedupeKey = decision.status === "accepted"
-    ? [cleanKey(job.company), cleanKey(decision.normalizedTitle), cleanKey(location.city), cleanKey(location.region), cleanKey(location.country), job.postedAt.slice(0, 10)].join("|")
-    : null;
-  const idHash = await sha256(dedupeKey ?? `${job.sourceId}|${job.externalId}`);
-  const jobId = `job_${idHash.slice(0, 24)}`;
+  const canonicalUrl = canonicalApplyUrl(job.applicationUrl) || job.applicationUrl;
+  // Preserve requisition identity across timestamp/title changes. Cross-source mirrors
+  // are matched by exact title/location, never by broad normalized title or date.
+  const existing = await env.JOB_LOBSTER_DB.prepare(`SELECT id FROM jobs WHERE
+    (ats_provider = ? AND original_external_id = ? AND LOWER(company) = LOWER(?))
+    OR canonical_url = ? OR application_url = ?
+    OR (LOWER(company) = LOWER(?) AND LOWER(original_title) = LOWER(?)
+      AND COALESCE(city, '') = ? AND COALESCE(region, '') = ? AND COALESCE(country, '') = ?
+      AND ats_provider <> ? AND (ats_provider IN ('linkedin','indeed','glassdoor') OR ? IN ('linkedin','indeed','glassdoor'))
+      AND (SELECT COUNT(*) FROM jobs other WHERE LOWER(other.company) = LOWER(jobs.company)
+        AND LOWER(other.original_title) = LOWER(jobs.original_title)
+        AND COALESCE(other.city, '') = COALESCE(jobs.city, '')
+        AND COALESCE(other.region, '') = COALESCE(jobs.region, '')
+        AND COALESCE(other.country, '') = COALESCE(jobs.country, '')) = 1)
+    ORDER BY first_seen ASC LIMIT 1`).bind(job.provider, job.externalId, job.company,
+      canonicalUrl, canonicalUrl, job.company, job.title, location.city ?? '', location.region ?? '', location.country ?? '', job.provider, job.provider).first<{ id: string }>();
+  const dedupeKey = canonicalUrl;
+  const jobId = existing?.id ?? `job_${(await sha256(dedupeKey || `${job.sourceId}|${job.externalId}`)).slice(0, 24)}`;
   const discoveryId = `discovery_${(await sha256(`${runId}|${job.sourceId}|${job.externalId}`)).slice(0, 24)}`;
-  const existing = await env.JOB_LOBSTER_DB.prepare("SELECT id FROM jobs WHERE id = ? LIMIT 1").bind(jobId).first<{ id: string }>();
 
   if (decision.status === "accepted") {
     stats.jobsAccepted += 1;
@@ -269,12 +282,13 @@ async function storeCandidate(
         conversion_timestamp = excluded.conversion_timestamp,
         salary_status = excluded.salary_status,
         salary_source = excluded.salary_source,
-        posted_at = excluded.posted_at,
-        discovered_at = excluded.discovered_at,
-        source = excluded.source,
-        source_url = excluded.source_url,
-        canonical_url = excluded.canonical_url,
-        application_url = excluded.application_url,
+        posted_at = CASE WHEN jobs.posted_at = '' THEN excluded.posted_at WHEN excluded.posted_at = '' THEN jobs.posted_at ELSE MIN(jobs.posted_at, excluded.posted_at) END,
+        discovered_at = jobs.discovered_at,
+        source = CASE WHEN jobs.ats_provider NOT IN ('linkedin','indeed','glassdoor') AND excluded.ats_provider IN ('linkedin','indeed','glassdoor') THEN jobs.source ELSE excluded.source END,
+        source_url = CASE WHEN jobs.ats_provider NOT IN ('linkedin','indeed','glassdoor') AND excluded.ats_provider IN ('linkedin','indeed','glassdoor') THEN jobs.source_url ELSE excluded.source_url END,
+        canonical_url = CASE WHEN jobs.ats_provider NOT IN ('linkedin','indeed','glassdoor') AND excluded.ats_provider IN ('linkedin','indeed','glassdoor') THEN jobs.canonical_url ELSE excluded.canonical_url END,
+        application_url = CASE WHEN jobs.ats_provider NOT IN ('linkedin','indeed','glassdoor') AND excluded.ats_provider IN ('linkedin','indeed','glassdoor') THEN jobs.application_url ELSE excluded.application_url END,
+        ats_provider = CASE WHEN jobs.ats_provider NOT IN ('linkedin','indeed','glassdoor') THEN jobs.ats_provider ELSE excluded.ats_provider END,
         industry = excluded.industry,
         status = excluded.status,
         qualification_status = excluded.qualification_status,
@@ -286,10 +300,13 @@ async function storeCandidate(
       location.region, location.city, location.latitude, location.longitude, job.workType,
       job.eligibility, job.employmentType, salary.originalMin, salary.originalMax, salary.currency,
       salary.cadMin, salary.cadMax, salary.conversionRate, rates.effectiveAt, salary.status,
-      salary.evidence, job.postedAt, discoveredAt, providerName, job.sourceUrl, job.sourceUrl,
+      salary.evidence, job.postedAt, discoveredAt, providerName, job.sourceUrl, canonicalUrl,
       job.applicationUrl, job.provider, job.industry, status, decision.status,
       decision.rejectionReason, dedupeKey, discoveredAt,
     ),
+    env.JOB_LOBSTER_DB.prepare(`INSERT INTO job_sightings(job_id, source_id, first_seen, last_seen)
+      VALUES (?, ?, ?, ?) ON CONFLICT(job_id, source_id) DO UPDATE SET last_seen=excluded.last_seen`)
+      .bind(jobId, job.sourceId, discoveredAt, discoveredAt),
   ]);
 }
 

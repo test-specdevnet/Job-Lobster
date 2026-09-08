@@ -11,6 +11,7 @@ function scoped(scope: SourceScope, sources: readonly SourceDefinition[]): reado
 // Public employer job boards. Tokens are the final path component of each
 // employer's hosted ATS board, not credentials.
 export const CORE_ATS_SOURCES = scoped("core", [
+  { id: "smartrecruiters-smartrecruiters", name: "SmartRecruiters", provider: "smartrecruiters", token: "SmartRecruiters", website: "https://www.smartrecruiters.com" },
   { id: "ashby-revenuecat", name: "RevenueCat", provider: "ashby", token: "revenuecat", website: "https://www.revenuecat.com" },
   { id: "ashby-kit", name: "Kit", provider: "ashby", token: "kit", website: "https://kit.com" },
   { id: "ashby-givebutter", name: "Givebutter", provider: "ashby", token: "givebutter", website: "https://givebutter.com" },
@@ -131,7 +132,7 @@ export const DAILY_ATS_SOURCES = scoped("daily", [
   { id: "greenhouse-maven-clinic", name: "Maven Clinic", provider: "greenhouse", token: "mavenclinic" },
   { id: "greenhouse-commercetools", name: "commercetools", provider: "greenhouse", token: "commercetools" },
   { id: "greenhouse-launchdarkly", name: "LaunchDarkly", provider: "greenhouse", token: "launchdarkly" },
-  { id: "greenhouse-marqeta", name: "Marqeta", provider: "greenhouse", token: "marqeta" },
+  { id: "ashby-marqeta", name: "Marqeta", provider: "ashby", token: "marqeta-inc", website: "https://www.marqeta.com/company/careers" },
   { id: "greenhouse-betterment", name: "Betterment", provider: "greenhouse", token: "betterment" },
   { id: "greenhouse-carta", name: "Carta", provider: "greenhouse", token: "carta" },
   { id: "greenhouse-new-relic", name: "New Relic", provider: "greenhouse", token: "newrelic" },
