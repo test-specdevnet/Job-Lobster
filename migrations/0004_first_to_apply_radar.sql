@@ -1,5 +1,8 @@
 ALTER TABLE jobs ADD COLUMN first_seen TEXT;
 ALTER TABLE jobs ADD COLUMN first_seen_legacy INTEGER NOT NULL DEFAULT 0;
+-- Index both historical lookup paths before backfilling the production dataset.
+CREATE INDEX IF NOT EXISTS discoveries_source_seen_idx ON discoveries(source_url, discovered_at);
+CREATE INDEX IF NOT EXISTS discoveries_canonical_seen_idx ON discoveries(canonical_url, discovered_at);
 -- Recover earliest retained observation. Old discovered_at values were mutable.
 UPDATE jobs SET first_seen = COALESCE(
   (SELECT MIN(d.discovered_at) FROM discoveries d WHERE d.source_url = jobs.source_url OR d.canonical_url = jobs.canonical_url),
