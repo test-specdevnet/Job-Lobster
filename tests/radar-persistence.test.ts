@@ -30,6 +30,17 @@ function setup() {
   return { db, env, raw, now, ingest };
 }
 describe("radar database regression", () => {
+  it("loads every job across bounded pages without duplicates", async () => {
+    const { env, raw, ingest } = setup();
+    for (let i = 0; i < 13; i++) await ingest({ ...raw, externalId: `page-${i}`, applicationUrl: `https://jobs.example.com/page-${i}`, sourceUrl: `https://jobs.example.com/page-${i}` });
+    const first = await (await listRadar(new Request("https://example.com/api/v1/radar"), env)).json() as any;
+    const second = await (await listRadar(new Request(`https://example.com/api/v1/radar?offset=${first.meta.nextOffset}`), env)).json() as any;
+    expect(first.data).toHaveLength(10); expect(second.data).toHaveLength(3);
+    expect(second.meta.nextOffset).toBeNull();
+    expect(new Set([...first.data, ...second.data].map(j => j.id)).size).toBe(13);
+    expect((await listRadar(new Request("https://example.com/api/v1/radar?offset=-1"), env)).status).toBe(400);
+  });
+
   it("preserves first_seen, ID and original posting time across reingestion and changed dates", async () => {
     const { db, raw, now, ingest } = setup();
     await ingest(); const first = db.prepare("SELECT * FROM jobs").get();

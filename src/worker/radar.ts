@@ -13,6 +13,9 @@ export interface RadarRow extends JobRow {
 export async function listRadar(request: Request, env: Env) {
   if (request.method !== "GET") return methodNotAllowed();
   const now = new Date();
+  const offset = Number(new URL(request.url).searchParams.get("offset") ?? 0);
+  if (!Number.isInteger(offset) || offset < 0) return jsonResponse({ error: { message: "Invalid radar offset." } }, { status: 400 });
+  const pageSize = 10;
   const result = await env.JOB_LOBSTER_DB.prepare(`
     SELECT j.*, p.stage, p.next_action, p.follow_up_at, p.contact_url, p.notes,
       (SELECT COUNT(*) FROM job_sightings s WHERE s.job_id = j.id) AS source_count
@@ -21,9 +24,11 @@ export async function listRadar(request: Request, env: Env) {
       AND (datetime(j.posted_at) >= datetime('now', '-30 days') OR
         (j.posted_at = '' AND datetime(j.first_seen) >= datetime('now', '-30 days'))))
       OR p.job_id IS NOT NULL
-    ORDER BY j.first_seen DESC
-  `).all<RadarRow>();
-  const data = result.results.map(row => {
+    ORDER BY j.first_seen DESC, j.id
+    LIMIT ? OFFSET ?
+  `).bind(pageSize + 1, offset).all<RadarRow>();
+  const nextOffset = result.results.length > pageSize ? offset + pageSize : null;
+  const data = result.results.slice(0, pageSize).map(row => {
     const radar = scoreRadar(row, now);
     const active = row.status === "active" && row.qualification_status === "accepted" && getAgeHours(row.posted_at || row.first_seen || "", now) <= 720;
     if (!active) radar.unknowns.push("Listing is outside the active discovery window; verify that it is still open before taking action.");
@@ -32,7 +37,7 @@ export async function listRadar(request: Request, env: Env) {
     pipeline: { stage: row.stage ?? "New", nextAction: row.next_action ?? "", followUpAt: row.follow_up_at, contactUrl: row.contact_url ?? "", notes: row.notes ?? "" },
   }; }).sort((a, b) => b.radar.score - a.radar.score || a.id.localeCompare(b.id));
   const queue = data.filter(job => job.radar.actionable && ["New", "Apply Now"].includes(job.pipeline.stage)).slice(0, 15).map(job => job.id);
-  return jsonResponse({ data, meta: { count: data.length, generatedAt: now.toISOString(), activeWindowDays: 30, filters: {}, queue,
+  return jsonResponse({ data, meta: { count: data.length, nextOffset, generatedAt: now.toISOString(), activeWindowDays: 30, filters: {}, queue,
     interviews: data.filter(j => j.pipeline.stage === "Interview").length,
     followUpsDue: data.filter(j => j.pipeline.stage !== "Closed" && (j.pipeline.stage === "Follow-Up Due" || (j.pipeline.followUpAt && Date.parse(j.pipeline.followUpAt) <= now.getTime()))).length,
   } }, { headers: { "cache-control": "no-store" } });
